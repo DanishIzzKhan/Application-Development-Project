@@ -10,7 +10,7 @@ This project is developed collaboratively by our team.
 2) Adam Syahmi
 3) Afiq Irfan
 4) Yan Jiarong
-5) Abralyn Hoo Weng Yan
+5) Abralyn Hoo Weng Yan 
 
 ## Technologies Used
 - To be decided
