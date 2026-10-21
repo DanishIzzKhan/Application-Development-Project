@@ -22,3 +22,6 @@ Overall, the Bike Rental System aims to reduce reliance on manual processes, imp
 
 ## Project Status
 - Undergoing
+
+## Contact
+abralynhoo@gmail.com (Abralyn)
