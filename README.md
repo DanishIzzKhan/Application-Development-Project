@@ -14,7 +14,7 @@ Overall, the Bike Rental System aims to reduce reliance on manual processes, imp
 1) Danish Izz Khan
 2) Adam Syahmi
 3) Afiq Irfan
-4) Yan Jiarong
+4) Yan Jiarong (A24CS0029) 
 5) Abralyn Hoo Weng Yan
 
 ## Technologies Used
