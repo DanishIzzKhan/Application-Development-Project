@@ -12,8 +12,8 @@ Overall, the Bike Rental System aims to reduce reliance on manual processes, imp
 
 ## Team Members
 1) Danish Izz Khan
-2) Adam Syahmi
-3) Afiq Irfan
+2) Adam Syahmi bin Abdullah (A24CS0219)
+3) Muhammad Afiq Irfan Bin Zuraimi (A24CS0122)
 4) Yan Jiarong (A24CS0029) 
 5) Abralyn Hoo Weng Yan
 
