@@ -1,94 +1,32 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'config.dart';
+import 'screens/c1_login.dart';
+import 'screens/c3_vehicles.dart';
+import 'theme.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Supabase.initialize(
-    url: 'https://olmtsqxuwyjwgknpeabe.supabase.co',
-    publishableKey: 'sb_publishable_JvHTnDPvOp0zJXzh_zwMvA_H8qOsF7X',
+    url: AppConfig.supabaseUrl,
+    anonKey: AppConfig.supabaseAnonKey,
   );
-
-  runApp(const MyApp());
+  runApp(const IsygearApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class IsygearApp extends StatelessWidget {
+  const IsygearApp({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Returning customers who are still signed in go straight to C3.
+    final signedIn = Supabase.instance.client.auth.currentSession != null;
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'ISYGEAR Rentals',
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(),
+      home: signedIn ? const VehiclesScreen() : const LoginScreen(),
     );
   }
 }
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
-  }
-
-  Future<void> testConnection() async {
-    try {
-      final data = await Supabase.instance.client
-          .from('vehicles')
-          .select();
-
-      print(data);
-    } catch (error) {
-      print('Connection error: $error');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            ElevatedButton(
-              onPressed: testConnection,
-              child: const Text('Test Supabase Connection'),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
-    );
-  }
-}
-
-
