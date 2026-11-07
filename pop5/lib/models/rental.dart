@@ -19,6 +19,7 @@ class OwnerRental {
   final DateTime scheduledStart;
   final DateTime scheduledEnd;
   final String? depositNote; // walk-ins only, e.g. "IC copy"
+  final bool walkInIcPhotoTaken; // walk-ins only: IC photo taken on O4
 
   const OwnerRental({
     required this.id,
@@ -35,6 +36,7 @@ class OwnerRental {
     this.isPaid = false,
     this.paidOnline = false,
     this.depositNote,
+    this.walkInIcPhotoTaken = false,
   });
 
   // ---------- Booking ----------
@@ -93,6 +95,7 @@ class OwnerRental {
         scheduledStart: now,
         scheduledEnd: now.add(Duration(minutes: durationMinutes)),
         depositNote: depositNote,
+        walkInIcPhotoTaken: walkInIcPhotoTaken,
       );
 }
 
@@ -148,6 +151,23 @@ List<OwnerRental> sampleOwnerRentals([DateTime? now]) {
       scheduledStart: t,
       scheduledEnd: t.add(const Duration(minutes: 60)),
     ),
+    // Walk-in booked on O4: paid at the counter, IC photo already taken.
+    OwnerRental(
+      id: 'RNT-8803',
+      bookingCode: 'ISY-4823',
+      vehicleName: 'Bicycle B05',
+      customerName: 'Walk-in: Siti',
+      isWalkIn: true,
+      status: 'ready',
+      blocksBooked: 2,
+      ratePerBlock: 3,
+      lateRatePerBlock: 3,
+      isPaid: true,
+      depositNote: 'IC copy',
+      walkInIcPhotoTaken: true,
+      scheduledStart: t,
+      scheduledEnd: t.add(const Duration(minutes: 40)),
+    ),
     OwnerRental(
       id: 'RNT-8790',
       bookingCode: 'ISY-4790',
@@ -174,6 +194,7 @@ List<OwnerRental> sampleOwnerRentals([DateTime? now]) {
       lateRatePerBlock: 3,
       isPaid: true,
       depositNote: 'IC copy',
+      walkInIcPhotoTaken: true,
       scheduledStart: t.subtract(const Duration(minutes: 70)),
       scheduledEnd: t.subtract(const Duration(minutes: 10)),
     ),

@@ -62,7 +62,7 @@ class _RentalsScreenState extends State<RentalsScreen> {
             child: SmallButton(
               label: '+ Walk-in',
               primary: false,
-              onPressed: () => _comingSoon('O4 Walk-in booking'),
+              onPressed: () => _comingSoon('Walk-in booking'), // O4
             ),
           ),
         ],
@@ -81,7 +81,7 @@ class _RentalsScreenState extends State<RentalsScreen> {
           SizedBox(
             height: 48,
             child: FilledButton.icon(
-              onPressed: () => _comingSoon('O3b Scan booking'),
+              onPressed: () => _comingSoon('Scan booking'), // O3b
               icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
               label: Text('Scan booking QR',
                   style: inter(15,
@@ -108,8 +108,8 @@ class _RentalsScreenState extends State<RentalsScreen> {
           if (waiting.isEmpty) const _EmptyRow(),
           const SizedBox(height: 20),
 
-          // ---- Ready to collect -> O5 ----
-          const SectionTitle('Ready to collect'),
+          // ---- Ready for handover -> O5 ----
+          const SectionTitle('Ready for handover'),
           for (final r in ready)
             _RentalRow(
               title: r.title,
@@ -134,9 +134,9 @@ class _RentalsScreenState extends State<RentalsScreen> {
               button: SmallButton(
                 label: 'End',
                 primary: false,
-                onPressed: () => _comingSoon('O6 End rental'),
+                onPressed: () => _comingSoon('End rental'), // O6
               ),
-              onTap: () => _comingSoon('O6 End rental'),
+              onTap: () => _comingSoon('End rental'), // O6
             ),
           if (active.isEmpty) const _EmptyRow(),
         ],

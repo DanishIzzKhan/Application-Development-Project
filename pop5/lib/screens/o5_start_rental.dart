@@ -17,31 +17,63 @@ class StartRentalScreen extends StatefulWidget {
 
 class _StartRentalScreenState extends State<StartRentalScreen> {
   late bool _paid = widget.rental.isPaid; // already paid online -> true
-  bool _icMatches = false;
+  bool _icMatches = false; // checked again on every visit
   VehicleCondition _condition = VehicleCondition.good;
+
+  /// Becomes true when the owner taps Start before everything is done.
+  /// Only then do the red reminders appear.
+  bool _triedStart = false;
+
+  /// Walk-ins paid at the counter on O4, so they can start straight away.
+  /// App customers need payment AND the IC tick box.
+  bool get _canStart => widget.rental.isWalkIn || (_paid && _icMatches);
+
+  /// Lines shown under the Start button: what is still missing.
+  List<String> get _missing => widget.rental.isWalkIn
+      ? const []
+      : [
+          if (!_paid) 'Confirm payment to start',
+          if (!_icMatches) 'Tick the IC check to start',
+        ];
 
   void _confirmPayment() {
     // Later: Api.confirmCounterPayment(rental.id)
     setState(() => _paid = true);
-    showToast(context, 'Payment of ${widget.rental.totalLabel} recorded.');
+    showTopNotice(context,
+        title: 'Payment of ${widget.rental.totalLabel} recorded',
+        type: NoticeType.success);
   }
 
   void _viewIc() {
     // Later: open the IC photo from the private ic-documents bucket
     // and write an IC access log entry (every view is recorded).
-    showToast(context, 'IC viewer comes later. Every view will be logged.');
+    showTopNotice(context,
+        title: 'IC viewer: coming soon',
+        lines: ['Every IC view will be recorded.']);
   }
 
   void _openCustomerDetails() {
     // Later: O3c Customer details.
-    showToast(context, 'Customer details (O3c) is not built yet.');
+    showTopNotice(context, title: 'Customer details: coming soon');
+  }
+
+  /// Grey Start button tapped: show a notification at the top saying
+  /// what is missing, and mark the cards that need doing in red.
+  void _onStartPressed() {
+    setState(() => _triedStart = true);
+    showTopNotice(context,
+        title: "Can't start rental yet",
+        lines: _missing,
+        type: NoticeType.error);
   }
 
   void _startRental() {
     // Later: Api.startRental(rental.id, condition: _condition)
     // sets actual_start_time = now and status = 'active';
     // the customer app switches to C9 automatically.
-    showToast(context, '${widget.rental.vehicleName} rental started.');
+    showTopNotice(context,
+        title: '${widget.rental.vehicleName} rental started',
+        type: NoticeType.success);
     Navigator.of(context).pop(true);
   }
 
@@ -65,6 +97,7 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
           // ---- Payment ----
           OutlinedCard(
             strong: true,
+            error: _triedStart && !_paid,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -103,11 +136,32 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
           ),
           const SizedBox(height: 12),
 
-          // ---- IC (app customers) or deposit note (walk-ins) ----
+          // ---- IC: tick box for app customers, photo status for walk-ins ----
           if (r.isWalkIn)
-            _GreyNote('IC or deposit held: ${r.depositNote ?? '-'}')
+            OutlinedCard(
+              child: Row(
+                children: [
+                  const Icon(Icons.shield_outlined,
+                      color: AppColors.ink, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      r.walkInIcPhotoTaken
+                          ? 'IC photo taken ✓'
+                          : 'IC photo not taken yet',
+                      style: inter(15,
+                          weight: FontWeight.w600,
+                          color: r.walkInIcPhotoTaken
+                              ? AppColors.ink
+                              : AppColors.hint),
+                    ),
+                  ),
+                ],
+              ),
+            )
           else
             OutlinedCard(
+              error: _triedStart && !_icMatches,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -130,7 +184,7 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
                   AppCheckRow(
                     value: _icMatches,
                     onChanged: (v) => setState(() => _icMatches = v),
-                    text: 'First visit: IC matches the customer',
+                    text: 'Customer matches IC photo',
                   ),
                 ],
               ),
@@ -138,7 +192,7 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
           const SizedBox(height: 16),
 
           // ---- Condition ----
-          const SectionTitle('Condition at collection'),
+          const SectionTitle('Vehicle condition before handover'),
           const SizedBox(height: 10),
           ConditionChips(
             value: _condition,
@@ -147,17 +201,14 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
 
           const Spacer(),
           const SizedBox(height: 16),
-          if (!_paid) ...[
-            Text(
-              'Confirm payment first. Start rental is enabled once payment is received.',
-              textAlign: TextAlign.center,
-              style: inter(12, color: AppColors.hint),
+          // Grey (disabled) until ready. A tap on the grey button still
+          // reaches the GestureDetector and shows the top notification.
+          GestureDetector(
+            onTap: _canStart ? null : _onStartPressed,
+            child: PrimaryButton(
+              label: 'Start rental',
+              onPressed: _canStart ? _startRental : null,
             ),
-            const SizedBox(height: 10),
-          ],
-          PrimaryButton(
-            label: 'Start rental',
-            onPressed: _paid ? _startRental : null, // disabled until paid
           ),
         ],
       ),
@@ -168,23 +219,5 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
     if (!_paid) return 'Pay at counter';
     if (r.isWalkIn) return 'Paid at counter';
     return r.paidOnline ? 'Paid online' : 'Paid at counter';
-  }
-}
-
-/// Light grey info box (#F0F0F0).
-class _GreyNote extends StatelessWidget {
-  final String text;
-  const _GreyNote(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(text, style: inter(13, color: AppColors.text2)),
-    );
   }
 }

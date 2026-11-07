@@ -24,11 +24,11 @@ class _OwnerShellState extends State<OwnerShell> {
   // IndexedStack keeps every tab alive, so switching tabs and coming back
   // does not reset the Rentals list.
   static const _pages = <Widget>[
-    _PlaceholderTab(title: 'Home', screen: 'O2 Home'),
-    RentalsScreen(),
-    _PlaceholderTab(title: 'Live map', screen: 'O7 Live map'),
-    _PlaceholderTab(title: 'Vehicles', screen: 'O9 Vehicles'),
-    _PlaceholderTab(title: 'More', screen: 'O15 More'),
+    _PlaceholderTab(title: 'Home'), // O2 Home
+    RentalsScreen(), // O3 Rentals
+    _PlaceholderTab(title: 'Live map'), // O7 Live map
+    _PlaceholderTab(title: 'Vehicles'), // O9 Vehicles
+    _PlaceholderTab(title: 'More'), // O15 More
   ];
 
   @override
@@ -101,15 +101,14 @@ class _OwnerBottomNav extends StatelessWidget {
 /// Simple page for tabs that are not built yet.
 class _PlaceholderTab extends StatelessWidget {
   final String title;
-  final String screen;
-  const _PlaceholderTab({required this.title, required this.screen});
+  const _PlaceholderTab({required this.title});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppHeader(title: title, showBack: false),
       body: Center(
-        child: Text('$screen: coming soon',
+        child: Text('Coming soon',
             style: inter(15, color: AppColors.hint)),
       ),
     );

@@ -1,7 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/rental.dart';
 import '../theme.dart';
+
+/// Red for reminders and errors. Same red as the error border in
+/// common.dart (AppField). Could move into AppColors if the group agrees.
+final errorRed = Colors.red.shade700;
 
 /// Small rounded label. Filled = PAID, OVERDUE, CURRENT, AVAILABLE.
 /// Outline = PENDING, LATE, ISSUE.
@@ -43,15 +49,18 @@ class SectionTitle extends StatelessWidget {
 
 /// White card, 1.5 grey border, radius 10, padding 12.
 /// Use [strong] for the dark 2px border (payment card on O5).
+/// Set [error] to show a red 2px border (something still needs doing).
 class OutlinedCard extends StatelessWidget {
   final Widget child;
   final bool strong;
+  final bool error;
   final Color color;
 
   const OutlinedCard({
     super.key,
     required this.child,
     this.strong = false,
+    this.error = false,
     this.color = Colors.white,
   });
 
@@ -63,8 +72,10 @@ class OutlinedCard extends StatelessWidget {
         color: color,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: strong ? AppColors.dark : AppColors.divider,
-          width: strong ? 2 : 1.5,
+          color: error
+              ? errorRed
+              : (strong ? AppColors.dark : AppColors.divider),
+          width: (strong || error) ? 2 : 1.5,
         ),
       ),
       child: child,
@@ -169,7 +180,7 @@ class RentalSummaryCard extends StatelessWidget {
   }
 }
 
-/// Good / Minor issue / Damaged — one can be selected (O5, O6).
+/// Good / Minor issue / Damaged — compact pills in one row, one selected (O5, O6).
 class ConditionChips extends StatelessWidget {
   final VehicleCondition value;
   final ValueChanged<VehicleCondition> onChanged;
@@ -182,16 +193,16 @@ class ConditionChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    return Row(
       children: [
-        for (final c in VehicleCondition.values)
+        for (final c in VehicleCondition.values) ...[
+          if (c != VehicleCondition.values.first) const SizedBox(width: 8),
           _Chip(
             label: c.label,
             selected: c == value,
             onTap: () => onChanged(c),
           ),
+        ],
       ],
     );
   }
@@ -209,20 +220,164 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? AppColors.dark : Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.dark, width: 1.5),
         ),
         child: Text(label,
-            style: inter(14,
+            style: inter(13,
                 weight: FontWeight.w600,
                 color: selected ? Colors.white : AppColors.dark)),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Top notification: slides in at the top of the screen, then disappears.
+// ---------------------------------------------------------------------------
+
+/// success = something worked (dark ✓), info = for your information (grey ⓘ),
+/// error = something is missing or failed (red ⚠).
+enum NoticeType { success, info, error }
+
+OverlayEntry? _currentNotice;
+
+/// Shows a notification at the top for about 3 seconds, then it slides away.
+/// Tap it to close it early. Use this for every short message on owner screens.
+///
+///   showTopNotice(context, title: 'Payment recorded', type: NoticeType.success);
+///   showTopNotice(context, title: "Can't start rental yet",
+///       lines: ['Confirm payment to start'], type: NoticeType.error);
+void showTopNotice(BuildContext context,
+    {required String title,
+    List<String> lines = const [],
+    NoticeType type = NoticeType.info}) {
+  // Only one notification at a time.
+  if (_currentNotice?.mounted ?? false) _currentNotice!.remove();
+
+  late final OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (_) => _TopNotice(
+      title: title,
+      lines: lines,
+      type: type,
+      onDone: () {
+        if (entry.mounted) entry.remove();
+        if (_currentNotice == entry) _currentNotice = null;
+      },
+    ),
+  );
+  _currentNotice = entry;
+  Overlay.of(context).insert(entry);
+}
+
+class _TopNotice extends StatefulWidget {
+  final String title;
+  final List<String> lines;
+  final NoticeType type;
+  final VoidCallback onDone;
+
+  const _TopNotice({
+    required this.title,
+    required this.lines,
+    required this.type,
+    required this.onDone,
+  });
+
+  @override
+  State<_TopNotice> createState() => _TopNoticeState();
+}
+
+class _TopNoticeState extends State<_TopNotice>
+    with SingleTickerProviderStateMixin {
+  late final _anim = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 250));
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim.forward(); // slide in
+    _timer = Timer(const Duration(seconds: 3), _close);
+  }
+
+  Future<void> _close() async {
+    _timer?.cancel();
+    if (!mounted) return;
+    await _anim.reverse(); // slide out
+    if (mounted) widget.onDone();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final top = MediaQuery.of(context).padding.top + 8;
+    final (Color color, IconData icon) = switch (widget.type) {
+      NoticeType.success => (AppColors.dark, Icons.check_circle_outline),
+      NoticeType.info => (AppColors.text2, Icons.info_outline),
+      NoticeType.error => (errorRed, Icons.error_outline),
+    };
+    return Positioned(
+      top: top,
+      left: 16,
+      right: 16,
+      child: SlideTransition(
+        position: Tween(begin: const Offset(0, -1.5), end: Offset.zero)
+            .animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut)),
+        child: Material(
+          color: Colors.transparent,
+          child: GestureDetector(
+            onTap: _close,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: color, width: 1.5),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x33000000),
+                      blurRadius: 12,
+                      offset: Offset(0, 4)),
+                ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icon, size: 20, color: color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.title,
+                            style: inter(14,
+                                weight: FontWeight.w700, color: color)),
+                        for (final line in widget.lines) ...[
+                          const SizedBox(height: 4),
+                          Text('• $line', style: inter(13, color: color)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
