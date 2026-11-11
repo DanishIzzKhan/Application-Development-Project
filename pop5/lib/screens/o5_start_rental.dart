@@ -4,6 +4,7 @@ import '../models/rental.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
+import 'o3c_customer_details.dart';
 
 /// O5 Start rental — opened from O3 ("Open" / "Start") and later from O3b / O4.
 /// Pops with `true` when the owner starts the rental, so O3 can move the row to Active.
@@ -45,16 +46,15 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
   }
 
   void _viewIc() {
-    // Later: open the IC photo from the private ic-documents bucket
-    // and write an IC access log entry (every view is recorded).
-    showTopNotice(context,
-        title: 'IC viewer: coming soon',
-        lines: ['Every IC view will be recorded.']);
+    // Same IC viewer as O3c: asks first, records the view (later: Api).
+    showIcViewer(context, widget.rental.customerName,
+        front: widget.rental.walkInIcFront, back: widget.rental.walkInIcBack);
   }
 
   void _openCustomerDetails() {
-    // Later: O3c Customer details.
-    showTopNotice(context, title: 'Customer details: coming soon');
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CustomerDetailsScreen(rental: widget.rental),
+    ));
   }
 
   /// Grey Start button tapped: show a notification at the top saying
@@ -89,7 +89,7 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
             title: r.title,
             subtitle:
                 'Booking ${r.bookingCode} · ${r.startLabel(DateTime.now())} · ${r.durationLabel}',
-            linkText: r.isWalkIn ? null : 'View customer details ›',
+            linkText: 'View customer details ›',
             onLinkTap: _openCustomerDetails,
           ),
           const SizedBox(height: 12),
@@ -136,7 +136,8 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
           ),
           const SizedBox(height: 12),
 
-          // ---- IC: tick box for app customers, photo status for walk-ins ----
+          // ---- IC: tick box for app customers; walk-ins always have the
+          //      photo from O4, so they always get View IC ----
           if (r.isWalkIn)
             OutlinedCard(
               child: Row(
@@ -145,17 +146,11 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
                       color: AppColors.ink, size: 22),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      r.walkInIcPhotoTaken
-                          ? 'IC photo taken ✓'
-                          : 'IC photo not taken yet',
-                      style: inter(15,
-                          weight: FontWeight.w600,
-                          color: r.walkInIcPhotoTaken
-                              ? AppColors.ink
-                              : AppColors.hint),
-                    ),
+                    child: Text('IC photo taken ✓',
+                        style: inter(15, weight: FontWeight.w600)),
                   ),
+                  SmallButton(
+                      label: 'View IC', primary: false, onPressed: _viewIc),
                 ],
               ),
             )
@@ -175,9 +170,7 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
                             style: inter(15, weight: FontWeight.w600)),
                       ),
                       SmallButton(
-                          label: 'View IC',
-                          primary: false,
-                          onPressed: _viewIc),
+                          label: 'View IC', primary: false, onPressed: _viewIc),
                     ],
                   ),
                   const SizedBox(height: 12),

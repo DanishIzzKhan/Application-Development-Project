@@ -37,7 +37,9 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
 
   int _minutes = 60; // wireframe default: 1 hr 0 min
   int _payment = 0; // Cash by default
-  Uint8List? _icPhoto; // optional IC photo (security record)
+  // Required IC photos, front and back (security record).
+  Uint8List? _icFront;
+  Uint8List? _icBack;
 
   int get _blocks => _minutes ~/ OwnerRental.blockMinutes;
   double get _total => _blocks * _vehicle.pricePer20Min;
@@ -49,6 +51,8 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
   List<String> get _missing => [
         if (_name.text.trim().isEmpty) 'Enter the customer name',
         if (!_phoneOk) 'Enter a valid contact number',
+        if (_icFront == null) 'Take a photo of the IC front',
+        if (_icBack == null) 'Take a photo of the IC back',
       ];
 
   bool get _canCreate => _missing.isEmpty;
@@ -69,13 +73,14 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
     super.dispose();
   }
 
-  Future<void> _takeIcPhoto() async {
+  Future<void> _takeIcPhoto({required bool front}) async {
     try {
       final file = await _picker.pickImage(
           source: ImageSource.camera, maxWidth: 1600, imageQuality: 85);
       if (file == null) return;
       final bytes = await file.readAsBytes();
-      if (mounted) setState(() => _icPhoto = bytes);
+      if (!mounted) return;
+      setState(() => front ? _icFront = bytes : _icBack = bytes);
     } catch (e) {
       if (mounted) {
         showTopNotice(context,
@@ -102,7 +107,8 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
       vehicle: _vehicle,
       minutes: _minutes,
       paymentMethod: _payValues[_payment],
-      icPhotoTaken: _icPhoto != null,
+      icFront: _icFront!,
+      icBack: _icBack!,
     );
     showTopNotice(context,
         title: 'Booking ${rental.bookingCode} created',
@@ -168,38 +174,31 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
           ),
           const SizedBox(height: 14),
 
-          // ---- Optional IC photo (shows "IC photo taken ✓" on O5) ----
-          GestureDetector(
-            onTap: _takeIcPhoto,
-            child: DashedBox(
-              height: 90,
-              child: _icPhoto != null
-                  ? Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Image.memory(_icPhoto!,
-                              width: 96, height: 64, fit: BoxFit.cover),
-                        ),
-                        const SizedBox(width: 12),
-                        Text('IC photo taken ✓',
-                            style: inter(14, weight: FontWeight.w600)),
-                      ],
-                    )
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.camera_alt_outlined, size: 24),
-                        const SizedBox(height: 4),
-                        Text('Take IC photo (optional)',
-                            style: inter(13, weight: FontWeight.w600)),
-                        Text('Security record. Only the owner can see it.',
-                            style: inter(12, color: AppColors.text2)),
-                      ],
-                    ),
-            ),
+          // ---- Required IC photos, front + back (O5 and O3c can View IC) ----
+          Text('Customer IC', style: inter(14, weight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _IcPhotoBox(
+                  label: 'Front',
+                  photo: _icFront,
+                  onTap: () => _takeIcPhoto(front: true),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _IcPhotoBox(
+                  label: 'Back',
+                  photo: _icBack,
+                  onTap: () => _takeIcPhoto(front: false),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 4),
+          Text('Security record. Only the owner can see it.',
+              style: inter(12, color: AppColors.text2)),
           const SizedBox(height: 14),
 
           // ---- Payment received ----
@@ -213,7 +212,7 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
 
           const Spacer(),
           const SizedBox(height: 16),
-          // Grey until name and contact number are filled.
+          // Grey until name, contact number and both IC photos are done.
           // A tap on the grey button shows what is missing.
           GestureDetector(
             onTap: _canCreate ? null : _showMissing,
@@ -232,3 +231,59 @@ OutlineInputBorder _border(Color c) => OutlineInputBorder(
       borderRadius: BorderRadius.circular(8),
       borderSide: BorderSide(color: c, width: 1.5),
     );
+
+/// One dashed photo box on O4 (IC front or back). Tap to take / retake.
+class _IcPhotoBox extends StatelessWidget {
+  final String label;
+  final Uint8List? photo;
+  final VoidCallback onTap;
+
+  const _IcPhotoBox(
+      {required this.label, required this.photo, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: DashedBox(
+        height: 96,
+        child: photo != null
+            ? Stack(
+                children: [
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(9),
+                      child: Image.memory(photo!, fit: BoxFit.cover),
+                    ),
+                  ),
+                  Positioned(
+                    left: 6,
+                    bottom: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.dark,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text('$label ✓',
+                          style: inter(11,
+                              weight: FontWeight.w700, color: Colors.white)),
+                    ),
+                  ),
+                ],
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.camera_alt_outlined, size: 24),
+                  const SizedBox(height: 4),
+                  Text('IC $label', style: inter(13, weight: FontWeight.w600)),
+                  Text('Tap to take photo',
+                      style: inter(11, color: AppColors.text2)),
+                ],
+              ),
+      ),
+    );
+  }
+}
