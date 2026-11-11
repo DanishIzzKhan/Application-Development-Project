@@ -15,7 +15,8 @@ class WaitingPaymentScreen extends StatefulWidget {
 class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
   bool _isChecking = true;
   bool _isFailed = false;
-  String _statusMessage = 'Please complete the payment on your gateway app. We are waiting for confirmation...';
+  String _statusMessage =
+      'Please complete the payment on your gateway app. We are waiting for confirmation...';
   Timer? _pollTimer;
 
   @override
@@ -53,7 +54,8 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
           setState(() {
             _isChecking = false;
             _isFailed = true;
-            _statusMessage = 'Payment failed or was cancelled. Please try again.';
+            _statusMessage =
+                'Payment failed or was cancelled. Please try again.';
           });
         }
       } catch (e) {
@@ -75,8 +77,7 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
     try {
       await Supabase.instance.client
           .from('bookings')
-          .update({'status': 'cancelled'})
-          .eq('id', widget.bookingId);
+          .update({'status': 'cancelled'}).eq('id', widget.bookingId);
     } catch (_) {}
     if (mounted) Navigator.of(context).pop(false);
   }
@@ -96,18 +97,21 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
               Container(
                 width: 80,
                 height: 80,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: AppColors.surface,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: _isChecking
                       ? const CircularProgressIndicator(
-                          color: AppColors.dark, strokeWidth: 3,
+                          color: AppColors.dark,
+                          strokeWidth: 3,
                         )
                       : _isFailed
-                          ? const Icon(Icons.error_outline, size: 48, color: Colors.red)
-                          : const Icon(Icons.check_circle_outline, size: 48, color: AppColors.dark),
+                          ? const Icon(Icons.error_outline,
+                              size: 48, color: Colors.red)
+                          : const Icon(Icons.check_circle_outline,
+                              size: 48, color: AppColors.dark),
                 ),
               ),
               const SizedBox(height: 24),
@@ -142,20 +146,27 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 48),
                     side: const BorderSide(color: AppColors.border, width: 1.5),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
-                  child: Text('Cancel Booking', style: inter(14, weight: FontWeight.w600, color: AppColors.ink)),
+                  child: Text('Cancel Booking',
+                      style: inter(14,
+                          weight: FontWeight.w600, color: AppColors.ink)),
                 ),
               ] else ...[
                 PrimaryButton(
-                  label: _isChecking ? 'Waiting for confirmation...' : 'View Receipt (C8)',
-                  onPressed: _isChecking ? null : () => Navigator.pop(context, true),
+                  label: _isChecking
+                      ? 'Waiting for confirmation...'
+                      : 'View Receipt (C8)',
+                  onPressed:
+                      _isChecking ? null : () => Navigator.pop(context, true),
                 ),
                 if (_isChecking) ...[
                   const SizedBox(height: 12),
                   TextButton(
                     onPressed: _cancelBooking,
-                    child: Text('Cancel', style: inter(14, color: AppColors.text2)),
+                    child: Text('Cancel',
+                        style: inter(14, color: AppColors.text2)),
                   ),
                 ],
               ],
