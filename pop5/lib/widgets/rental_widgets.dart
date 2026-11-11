@@ -72,9 +72,8 @@ class OutlinedCard extends StatelessWidget {
         color: color,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: error
-              ? errorRed
-              : (strong ? AppColors.dark : AppColors.divider),
+          color:
+              error ? errorRed : (strong ? AppColors.dark : AppColors.divider),
           width: (strong || error) ? 2 : 1.5,
         ),
       ),
@@ -170,10 +169,69 @@ class RentalSummaryCard extends StatelessWidget {
             InkWell(
               onTap: onLinkTap,
               child: Text(linkText!,
-                  style: inter(13,
-                      weight: FontWeight.w600, color: AppColors.ink)),
+                  style:
+                      inter(13, weight: FontWeight.w600, color: AppColors.ink)),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One line of a [ChargesTable]: label on the left, amount on the right,
+/// optional small note under the amount (e.g. "paid", "auto-charged").
+class ChargeRow {
+  final String label;
+  final String amount;
+  final String? note;
+  const ChargeRow(this.label, this.amount, {this.note});
+}
+
+/// Rows of label + amount with a bold total underneath (O6, O6b, O6c).
+class ChargesTable extends StatelessWidget {
+  final List<ChargeRow> rows;
+  final String totalLabel;
+  final String total;
+
+  const ChargesTable({
+    super.key,
+    required this.rows,
+    required this.total,
+    this.totalLabel = 'Total',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget line(String label, String amount, String? note,
+        {bool bold = false}) {
+      final w = bold ? FontWeight.w700 : FontWeight.w400;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Text(label, style: inter(14, weight: w))),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(amount,
+                    style: inter(14, weight: bold ? w : FontWeight.w600)),
+                if (note != null)
+                  Text(note, style: inter(12, color: AppColors.text2)),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return OutlinedCard(
+      child: Column(
+        children: [
+          for (final r in rows) line(r.label, r.amount, r.note),
+          const Divider(color: AppColors.divider, thickness: 1.5, height: 16),
+          line(totalLabel, total, null, bold: true),
         ],
       ),
     );
