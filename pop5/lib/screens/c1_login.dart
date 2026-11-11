@@ -81,6 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _id,
                 keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.next,
+                
               ),
               const SizedBox(height: 16),
               AppField(
