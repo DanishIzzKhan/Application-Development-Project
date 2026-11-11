@@ -208,6 +208,102 @@ class ConditionChips extends StatelessWidget {
   }
 }
 
+/// Same compact pills as ConditionChips, for any list of choices
+/// (e.g. O4 "Payment received": Cash / Touch 'n Go / Bank QR).
+class OptionChips extends StatelessWidget {
+  final List<String> options;
+  final int selected; // index of the chosen option
+  final ValueChanged<int> onChanged;
+
+  const OptionChips({
+    super.key,
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (var i = 0; i < options.length; i++)
+          _Chip(
+            label: options[i],
+            selected: i == selected,
+            onTap: () => onChanged(i),
+          ),
+      ],
+    );
+  }
+}
+
+/// − / "1 hr 0 min" / +  with a hint underneath.
+/// Each tap adds or removes [step] minutes (20-minute blocks).
+class DurationStepper extends StatelessWidget {
+  final int minutes;
+  final ValueChanged<int> onChanged;
+  final int step;
+  final int min;
+  final int max;
+  final String hint;
+
+  const DurationStepper({
+    super.key,
+    required this.minutes,
+    required this.onChanged,
+    this.step = 20,
+    this.min = 20,
+    this.max = 480,
+    this.hint = 'Each tap adds or removes 20 minutes',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget button(IconData icon, VoidCallback? onTap) => SizedBox(
+          width: 48,
+          height: 48,
+          child: OutlinedButton(
+            onPressed: onTap,
+            style: OutlinedButton.styleFrom(
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              side: BorderSide(
+                  color: onTap == null ? AppColors.divider : AppColors.dark,
+                  width: 1.5),
+            ),
+            child: Icon(icon,
+                color: onTap == null ? AppColors.divider : AppColors.dark),
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            button(Icons.remove,
+                minutes > min ? () => onChanged(minutes - step) : null),
+            Expanded(
+              child: Text(formatDuration(minutes),
+                  textAlign: TextAlign.center,
+                  style: inter(18, weight: FontWeight.w700)),
+            ),
+            button(Icons.add,
+                minutes < max ? () => onChanged(minutes + step) : null),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(hint,
+            textAlign: TextAlign.center,
+            style: inter(12, color: AppColors.hint)),
+      ],
+    );
+  }
+}
+
 class _Chip extends StatelessWidget {
   final String label;
   final bool selected;

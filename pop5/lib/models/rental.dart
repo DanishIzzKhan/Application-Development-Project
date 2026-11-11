@@ -1,3 +1,7 @@
+import 'dart:math';
+
+import 'vehicle.dart';
+
 /// Owner-side view of one rental (O3, O5, O6, ...).
 /// Field names follow the `rentals` table in supabase/migrations.
 class OwnerRental {
@@ -20,6 +24,8 @@ class OwnerRental {
   final DateTime scheduledEnd;
   final String? depositNote; // walk-ins only, e.g. "IC copy"
   final bool walkInIcPhotoTaken; // walk-ins only: IC photo taken on O4
+  final String? walkInPhone; // walk-ins only (rentals.walk_in_phone)
+  final String? paymentMethod; // 'Cash' | 'TnG' | 'Bank QR' | 'Card' (payments table)
 
   const OwnerRental({
     required this.id,
@@ -37,7 +43,41 @@ class OwnerRental {
     this.paidOnline = false,
     this.depositNote,
     this.walkInIcPhotoTaken = false,
+    this.walkInPhone,
+    this.paymentMethod,
   });
+
+  /// New walk-in booking made by the owner on O4.
+  /// Paid at the counter, not tracked on the map, waiting for handover (O5).
+  factory OwnerRental.newWalkIn({
+    required String name,
+    required String phone,
+    required Vehicle vehicle,
+    required int minutes,
+    required String paymentMethod,
+    required bool icPhotoTaken,
+    DateTime? now,
+  }) {
+    final t = now ?? DateTime.now();
+    final n = Random().nextInt(9000) + 1000; // sample code until the Api makes one
+    return OwnerRental(
+      id: 'RNT-$n',
+      bookingCode: 'ISY-$n',
+      vehicleName: vehicle.name,
+      customerName: 'Walk-in: $name',
+      isWalkIn: true,
+      status: 'ready',
+      blocksBooked: minutes ~/ blockMinutes,
+      ratePerBlock: vehicle.pricePer20Min,
+      lateRatePerBlock: vehicle.pricePer20Min,
+      isPaid: true,
+      scheduledStart: t,
+      scheduledEnd: t.add(Duration(minutes: minutes)),
+      walkInIcPhotoTaken: icPhotoTaken,
+      walkInPhone: phone,
+      paymentMethod: paymentMethod,
+    );
+  }
 
   // ---------- Booking ----------
 
@@ -96,6 +136,8 @@ class OwnerRental {
         scheduledEnd: now.add(Duration(minutes: durationMinutes)),
         depositNote: depositNote,
         walkInIcPhotoTaken: walkInIcPhotoTaken,
+        walkInPhone: walkInPhone,
+        paymentMethod: paymentMethod,
       );
 }
 
@@ -120,84 +162,127 @@ String formatClock(DateTime t) {
 
 // ---------- Sample data (AppConfig.uiPreviewMode) ----------
 
+/// Real ISYGEAR prices per 20-minute block (RM).
+/// The late charge per block is the same as the vehicle's block price.
+class ShopPrices {
+  static const roadBike = 10.0;
+  static const mtbBmxKids = 10.0; // MTB, BMX and kids bikes
+  static const pushBike = 5.0;
+  static const scooter = 10.0;
+}
+
+Vehicle _v(String id, String name, String type, double price) => Vehicle(
+    id: id, name: name, type: type, pricePer20Min: price, status: 'available');
+
+/// Sample fleet. Each sample rental below uses one of these, so its price
+/// always comes from the vehicle.
+final _roadR01 = _v('R01', 'Road bike R01', 'bicycle', ShopPrices.roadBike);
+final _roadR02 = _v('R02', 'Road bike R02', 'bicycle', ShopPrices.roadBike);
+final _mtbM01 = _v('M01', 'MTB M01', 'bicycle', ShopPrices.mtbBmxKids);
+final _mtbM02 = _v('M02', 'MTB M02', 'bicycle', ShopPrices.mtbBmxKids);
+final _bmxX01 = _v('X01', 'BMX X01', 'bicycle', ShopPrices.mtbBmxKids);
+final _kidsK01 = _v('K01', 'Kids bike K01', 'bicycle', ShopPrices.mtbBmxKids);
+final _pushP01 = _v('P01', 'Push bike P01', 'bicycle', ShopPrices.pushBike);
+final _scootS01 = _v('S01', 'Scooter S01', 'scooter', ShopPrices.scooter);
+final _scootS02 = _v('S02', 'Scooter S02', 'scooter', ShopPrices.scooter);
+final _scootS03 = _v('S03', 'Scooter S03', 'scooter', ShopPrices.scooter);
+
+/// Vehicles free for a walk-in on O4 (not used by any sample rental).
+List<Vehicle> sampleAvailableVehicles() =>
+    [_roadR01, _mtbM01, _bmxX01, _pushP01, _scootS03];
+
+/// One sample rental. Rate and late rate both come from [v]'s block price,
+/// so the amount shown is always blocks × price.
+OwnerRental _sample({
+  required String id,
+  required String code,
+  required Vehicle v,
+  required String customer,
+  required String status,
+  required int blocks,
+  required DateTime start,
+  bool walkIn = false,
+  bool paid = false,
+  bool online = false,
+}) =>
+    OwnerRental(
+      id: id,
+      bookingCode: code,
+      vehicleName: v.name,
+      customerName: customer,
+      isWalkIn: walkIn,
+      status: status,
+      blocksBooked: blocks,
+      ratePerBlock: v.pricePer20Min,
+      lateRatePerBlock: v.pricePer20Min,
+      isPaid: paid,
+      paidOnline: online,
+      paymentMethod: walkIn ? 'Cash' : null,
+      walkInIcPhotoTaken: walkIn,
+      scheduledStart: start,
+      scheduledEnd:
+          start.add(Duration(minutes: blocks * OwnerRental.blockMinutes)),
+    );
+
 /// Rentals shown on O3 before Supabase is connected.
 /// Times are relative to [now] so the late rows are always late.
 List<OwnerRental> sampleOwnerRentals([DateTime? now]) {
   final t = now ?? DateTime.now();
+  final started70MinAgo = t.subtract(const Duration(minutes: 70));
   return [
-    OwnerRental(
-      id: 'RNT-8801',
-      bookingCode: 'ISY-4821',
-      vehicleName: 'Scooter S01',
-      customerName: 'ahmad_rides',
-      status: 'pending_payment',
-      blocksBooked: 3,
-      ratePerBlock: 5,
-      lateRatePerBlock: 5,
-      scheduledStart: t,
-      scheduledEnd: t.add(const Duration(minutes: 60)),
-    ),
-    OwnerRental(
-      id: 'RNT-8802',
-      bookingCode: 'ISY-4822',
-      vehicleName: 'Bicycle B02',
-      customerName: 'ahmad_rides',
-      status: 'ready',
-      blocksBooked: 3,
-      ratePerBlock: 3,
-      lateRatePerBlock: 3,
-      isPaid: true,
-      paidOnline: true,
-      scheduledStart: t,
-      scheduledEnd: t.add(const Duration(minutes: 60)),
-    ),
-    // Walk-in booked on O4: paid at the counter, IC photo already taken.
-    OwnerRental(
-      id: 'RNT-8803',
-      bookingCode: 'ISY-4823',
-      vehicleName: 'Bicycle B05',
-      customerName: 'Walk-in: Siti',
-      isWalkIn: true,
-      status: 'ready',
-      blocksBooked: 2,
-      ratePerBlock: 3,
-      lateRatePerBlock: 3,
-      isPaid: true,
-      depositNote: 'IC copy',
-      walkInIcPhotoTaken: true,
-      scheduledStart: t,
-      scheduledEnd: t.add(const Duration(minutes: 40)),
-    ),
-    OwnerRental(
-      id: 'RNT-8790',
-      bookingCode: 'ISY-4790',
-      vehicleName: 'Scooter S02',
-      customerName: 'mei_ling',
-      status: 'active',
-      blocksBooked: 3,
-      ratePerBlock: 5,
-      lateRatePerBlock: 5,
-      isPaid: true,
-      paidOnline: true,
-      scheduledStart: t.subtract(const Duration(minutes: 70)),
-      scheduledEnd: t.subtract(const Duration(minutes: 10)),
-    ),
-    OwnerRental(
-      id: 'RNT-8791',
-      bookingCode: 'ISY-4791',
-      vehicleName: 'Bicycle B04',
-      customerName: 'Walk-in: Ali',
-      isWalkIn: true,
-      status: 'active',
-      blocksBooked: 3,
-      ratePerBlock: 3,
-      lateRatePerBlock: 3,
-      isPaid: true,
-      depositNote: 'IC copy',
-      walkInIcPhotoTaken: true,
-      scheduledStart: t.subtract(const Duration(minutes: 70)),
-      scheduledEnd: t.subtract(const Duration(minutes: 10)),
-    ),
+    // Waiting for payment: 3 × RM 10 = RM 30.00
+    _sample(
+        id: 'RNT-8801',
+        code: 'ISY-4821',
+        v: _scootS01,
+        customer: 'ahmad_rides',
+        status: 'pending_payment',
+        blocks: 3,
+        start: t),
+    // Ready for handover, paid online: 3 × RM 10 = RM 30.00
+    _sample(
+        id: 'RNT-8802',
+        code: 'ISY-4822',
+        v: _roadR02,
+        customer: 'ahmad_rides',
+        status: 'ready',
+        blocks: 3,
+        start: t,
+        paid: true,
+        online: true),
+    // Ready for handover, walk-in paid cash: 2 × RM 10 = RM 20.00
+    _sample(
+        id: 'RNT-8803',
+        code: 'ISY-4823',
+        v: _kidsK01,
+        customer: 'Walk-in: Siti',
+        status: 'ready',
+        blocks: 2,
+        start: t,
+        walkIn: true,
+        paid: true),
+    // Active, 10 min late: 1 late block × RM 10 auto-charged
+    _sample(
+        id: 'RNT-8790',
+        code: 'ISY-4790',
+        v: _scootS02,
+        customer: 'mei_ling',
+        status: 'active',
+        blocks: 3,
+        start: started70MinAgo,
+        paid: true,
+        online: true),
+    // Active walk-in, 10 min overdue: extra 1 × RM 10
+    _sample(
+        id: 'RNT-8791',
+        code: 'ISY-4791',
+        v: _mtbM02,
+        customer: 'Walk-in: Ali',
+        status: 'active',
+        blocks: 3,
+        start: started70MinAgo,
+        walkIn: true,
+        paid: true),
   ];
 }
 
