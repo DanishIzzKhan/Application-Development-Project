@@ -25,7 +25,12 @@ class OwnerRental {
   final String? depositNote; // walk-ins only, e.g. "IC copy"
   final bool walkInIcPhotoTaken; // walk-ins only: IC photo taken on O4
   final String? walkInPhone; // walk-ins only (rentals.walk_in_phone)
-  final String? paymentMethod; // 'Cash' | 'TnG' | 'Bank QR' | 'Card' (payments table)
+  final String?
+      paymentMethod; // 'Cash' | 'TnG' | 'Bank QR' | 'Card' (payments table)
+
+  /// When the owner tapped "Returned" on O3 (vehicle physically back).
+  /// O6 uses it as the actual return time. Null = not back yet.
+  final DateTime? returnedAt;
 
   const OwnerRental({
     required this.id,
@@ -45,7 +50,10 @@ class OwnerRental {
     this.walkInIcPhotoTaken = false,
     this.walkInPhone,
     this.paymentMethod,
+    this.returnedAt,
   });
+
+  bool get isReturned => returnedAt != null;
 
   /// New walk-in booking made by the owner on O4.
   /// Paid at the counter, not tracked on the map, waiting for handover (O5).
@@ -59,7 +67,8 @@ class OwnerRental {
     DateTime? now,
   }) {
     final t = now ?? DateTime.now();
-    final n = Random().nextInt(9000) + 1000; // sample code until the Api makes one
+    final n =
+        Random().nextInt(9000) + 1000; // sample code until the Api makes one
     return OwnerRental(
       id: 'RNT-$n',
       bookingCode: 'ISY-$n',
@@ -116,7 +125,37 @@ class OwnerRental {
   int lateBlocks(DateTime now) => lateBlocksFor(minutesLate(now));
   double lateCharge(DateTime now) => lateBlocks(now) * lateRatePerBlock;
 
+  /// Late blocks already auto-charged to the saved card by [now].
+  /// Walk-ins have no saved card, so nothing is auto-charged.
+  /// Auto-charging stops once the owner taps "Returned".
+  /// Sample data: assumes the auto-charge ran on time.
+  /// Later: rentals.late_blocks_charged from the database.
+  int autoChargedBlocks(DateTime now) =>
+      isWalkIn ? 0 : lateBlocks(returnedAt ?? now);
+
   // ---------- Status changes (sample data only, until Api exists) ----------
+
+  /// Copy of this rental after the owner taps "Returned" on O3.
+  OwnerRental markedReturned(DateTime at) => OwnerRental(
+        id: id,
+        bookingCode: bookingCode,
+        vehicleName: vehicleName,
+        customerName: customerName,
+        isWalkIn: isWalkIn,
+        status: status,
+        blocksBooked: blocksBooked,
+        ratePerBlock: ratePerBlock,
+        lateRatePerBlock: lateRatePerBlock,
+        isPaid: isPaid,
+        paidOnline: paidOnline,
+        scheduledStart: scheduledStart,
+        scheduledEnd: scheduledEnd,
+        depositNote: depositNote,
+        walkInIcPhotoTaken: walkInIcPhotoTaken,
+        walkInPhone: walkInPhone,
+        paymentMethod: paymentMethod,
+        returnedAt: at,
+      );
 
   /// Copy of this rental after the owner taps "Start rental" on O5:
   /// the timer starts now and runs for the booked duration.
