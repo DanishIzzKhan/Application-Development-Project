@@ -4,6 +4,7 @@ import '../models/rental.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
+import 'o4_walk_in_booking.dart';
 import 'o5_start_rental.dart';
 
 /// O3 Rentals — the "Rentals" tab inside OwnerShell (bottom bar comes from the shell).
@@ -37,6 +38,17 @@ class _RentalsScreenState extends State<RentalsScreen> {
     }
   }
 
+  /// Opens O4. When the owner creates the booking, O4 returns the new
+  /// walk-in rental: add it to "Ready for handover", then open O5 for it.
+  Future<void> _openWalkIn() async {
+    final rental = await Navigator.of(context).push<OwnerRental>(
+      MaterialPageRoute(builder: (_) => const WalkInBookingScreen()),
+    );
+    if (rental == null || !mounted) return;
+    setState(() => _rentals = [..._rentals, rental]);
+    await _openStart(rental);
+  }
+
   void _comingSoon(String title) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => _ComingSoonScreen(title: title)),
@@ -62,7 +74,7 @@ class _RentalsScreenState extends State<RentalsScreen> {
             child: SmallButton(
               label: '+ Walk-in',
               primary: false,
-              onPressed: () => _comingSoon('Walk-in booking'), // O4
+              onPressed: _openWalkIn, // O4
             ),
           ),
         ],

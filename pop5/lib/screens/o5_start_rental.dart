@@ -217,7 +217,14 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
 
   String _paymentLabel(OwnerRental r) {
     if (!_paid) return 'Pay at counter';
-    if (r.isWalkIn) return 'Paid at counter';
+    if (r.isWalkIn) {
+      return switch (r.paymentMethod) {
+        'TnG' => 'Paid · Touch ’n Go',
+        'Bank QR' => 'Paid · Bank QR',
+        'Cash' => 'Paid · Cash',
+        _ => 'Paid at counter',
+      };
+    }
     return r.paidOnline ? 'Paid online' : 'Paid at counter';
   }
 }
