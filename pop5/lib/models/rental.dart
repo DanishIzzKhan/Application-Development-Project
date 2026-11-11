@@ -210,8 +210,8 @@ class ShopPrices {
   static const scooter = 10.0;
 }
 
-Vehicle _v(String id, String name, String type, double price) => Vehicle(
-    id: id, name: name, type: type, pricePer20Min: price, status: 'available');
+Vehicle _v(String id, String name, String type, double price) =>
+    Vehicle(id: id, type: type, pricePer20Min: price, status: 'available');
 
 /// Sample fleet. Each sample rental below uses one of these, so its price
 /// always comes from the vehicle.

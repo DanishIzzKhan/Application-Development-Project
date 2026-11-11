@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/vehicle.dart';
 import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'c6_payment.dart';
 
 class BookVehicleScreen extends StatefulWidget {
   final Vehicle vehicle;
@@ -22,7 +22,15 @@ class _BookVehicleScreenState extends State<BookVehicleScreen> {
   DateTime? _start; // null = start now
   int _minutes = 60; // wireframe default: 1 hr 0 min
   bool _agreed = false;
-  bool _loading = false;
+  ShopRules? _rules;
+
+  @override
+  void initState() {
+    super.initState();
+    Api.fetchShopRules().then((r) {
+      if (mounted) setState(() => _rules = r);
+    }).catchError((_) {});
+  }
 
   int get _blocks => _minutes ~/ _step;
   double get _total => _blocks * widget.vehicle.pricePer20Min;
@@ -49,30 +57,24 @@ class _BookVehicleScreenState extends State<BookVehicleScreen> {
     setState(() => _start = picked);
   }
 
+  /// Opens C6 / C6b. The booking is saved there, when the customer confirms.
   Future<void> _continue() async {
     if (!_agreed) {
       showToast(context,
           'Please agree to location sharing and automatic late charges.');
       return;
     }
-    setState(() => _loading = true);
-    try {
-      final id = await Api.createBooking(
-        vehicle: widget.vehicle,
-        start: _start ?? DateTime.now(),
-        durationMinutes: _minutes,
-      );
-      if (!mounted) return;
-      showToast(context,
-          'Booking ${id.substring(0, 8)} saved. Payment (C6) is the next screen.');
-      Navigator.of(context).pop(true);
-    } on PostgrestException catch (e) {
-      if (mounted) showToast(context, e.message);
-    } catch (e) {
-      if (mounted) showToast(context, 'Could not create booking: $e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    final booked = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PaymentScreen(
+          vehicle: widget.vehicle,
+          start: _start,
+          durationMinutes: _minutes,
+          total: _total,
+        ),
+      ),
+    );
+    if (booked == true && mounted) Navigator.of(context).pop(true);
   }
 
   @override
@@ -168,7 +170,7 @@ class _BookVehicleScreenState extends State<BookVehicleScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Return more than 5 min late and ${Api.lateFee} is charged automatically to your saved card every 20 min.',
+                      'Return more than ${_rules?.graceMinutes ?? 5} min late and ${_rules?.lateRateLabel ?? Api.lateFee} is charged automatically to your saved card every 20 min.',
                       style: inter(13, color: AppColors.dark),
                     ),
                   ),
@@ -203,7 +205,6 @@ class _BookVehicleScreenState extends State<BookVehicleScreen> {
             const SizedBox(height: 12),
             PrimaryButton(
                 label: 'Continue to payment',
-                loading: _loading,
                 onPressed: _continue),
           ],
         ),

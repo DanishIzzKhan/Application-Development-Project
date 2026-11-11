@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../config.dart';
 import '../models/registration_data.dart';
 import '../services/api.dart';
 import '../theme.dart';
@@ -36,23 +35,8 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   String? _required(String? v, String msg) =>
       (v == null || v.trim().isEmpty) ? msg : null;
 
-  Future<void> _sendCode() async {
-    final digits = _phone.text.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 9) {
-      showToast(context, 'Enter a valid phone number first.');
-      return;
-    }
-    if (!AppConfig.requireSmsVerification) {
-      showToast(context,
-          'SMS verification is switched off in config.dart (development mode).');
-      return;
-    }
-    try {
-      await Api.sendPhoneCode(Api.normalizePhone(_phone.text));
-      if (mounted) showToast(context, 'Code sent by SMS.');
-    } on AuthException catch (e) {
-      if (mounted) showToast(context, e.message);
-    }
+  void _sendCode() {
+    showToast(context, 'SMS verification is not enabled yet.');
   }
 
   Future<void> _next() async {
@@ -61,10 +45,16 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
     setState(() => _busy = true);
     try {
-      if (AppConfig.requireSmsVerification) {
-        await Api.verifyPhoneCode(phone, _code.text.trim());
-      }
+      final conflict = await Api.signupConflict(_username.text.trim(), phone);
       if (!mounted) return;
+      if (conflict == 'username') {
+        showToast(context, 'That username is already taken.');
+        return;
+      }
+      if (conflict == 'phone') {
+        showToast(context, 'That phone number is already registered.');
+        return;
+      }
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => UploadIcScreen(
           data: RegistrationData(
@@ -73,12 +63,13 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
             email: _email.text.trim(),
             phone: phone,
             password: _password.text,
-            phoneVerified: AppConfig.requireSmsVerification,
           ),
         ),
       ));
-    } on AuthException catch (e) {
+    } on PostgrestException catch (e) {
       if (mounted) showToast(context, e.message);
+    } catch (e) {
+      if (mounted) showToast(context, 'Something went wrong: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -147,12 +138,6 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                       controller: _code,
                       keyboardType: TextInputType.number,
                       textInputAction: TextInputAction.next,
-                      validator: (v) {
-                        if (!AppConfig.requireSmsVerification) return null;
-                        return RegExp(r'^\d{6}$').hasMatch((v ?? '').trim())
-                            ? null
-                            : 'Enter the 6-digit code';
-                      },
                     ),
                   ),
                   const SizedBox(width: 10),

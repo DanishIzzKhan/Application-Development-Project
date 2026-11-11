@@ -1,34 +1,33 @@
+/// Maps to the `vehicles` table.
 class Vehicle {
-  final String id;
-  final String name; // e.g. "Bicycle B01"
-  final String type; // 'bicycle' | 'scooter'
-  final double pricePer20Min;
-  final String status; // 'available' | 'rented' | 'maintenance'
+  final String id; // e.g. 'BK-01', 'SC-02'
+  final String type; // 'Bicycle' | 'Scooter'
+  final double pricePer20Min; // vehicles.rate_per_block
+  final String status; // 'Available' | 'Rented' | 'Maintenance'
   final String? photoUrl;
 
   const Vehicle({
     required this.id,
-    required this.name,
     required this.type,
     required this.pricePer20Min,
     required this.status,
     this.photoUrl,
   });
 
-  bool get isAvailable => status == 'available';
-  String get typeLabel => type == 'scooter' ? 'Scooter' : 'Bicycle';
+  String get name => '$type $id'; // e.g. "Bicycle BK-01"
+  bool get isAvailable => status == 'Available';
+  String get typeLabel => type;
   String get statusLabel => switch (status) {
-        'available' => 'Available',
-        'rented' => 'Rented',
+        'Available' => 'Available',
+        'Rented' => 'Rented',
         _ => 'Under maintenance',
       };
   String get priceLabel => 'RM ${pricePer20Min.toStringAsFixed(2)}';
 
   factory Vehicle.fromMap(Map<String, dynamic> m) => Vehicle(
         id: m['id'] as String,
-        name: m['name'] as String,
         type: m['type'] as String,
-        pricePer20Min: (m['price_per_20min'] as num).toDouble(),
+        pricePer20Min: (m['rate_per_block'] as num).toDouble(),
         status: m['status'] as String,
         photoUrl: m['photo_url'] as String?,
       );
@@ -38,7 +37,7 @@ enum VehicleSort { lowestPrice, name }
 
 /// State of the C4 filter panel. Defaults match the wireframe.
 class VehicleFilter {
-  final String? type; // null = All
+  final String? type; // null = All, else 'Bicycle' / 'Scooter'
   final bool availableOnly;
   final VehicleSort sort;
 
@@ -49,8 +48,8 @@ class VehicleFilter {
   });
 
   String get typeLabel => switch (type) {
-        'bicycle' => 'Bicycles',
-        'scooter' => 'Scooters',
+        'Bicycle' => 'Bicycles',
+        'Scooter' => 'Scooters',
         _ => 'All types',
       };
 

@@ -8,25 +8,33 @@ import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Supabase.initialize(
-    url: AppConfig.supabaseUrl,
-    anonKey: AppConfig.supabaseAnonKey,
-  );
-  runApp(const IsygearApp());
+
+  var signedIn = false;
+  try {
+    await Supabase.initialize(
+      url: AppConfig.supabaseUrl,
+      anonKey: AppConfig.supabaseAnonKey,
+    );
+    signedIn = Supabase.instance.client.auth.currentSession != null;
+  } catch (e) {
+    // Wrong/missing URL or key: the UI still opens (see AppConfig.uiPreviewMode).
+    debugPrint('Supabase could not start: $e');
+  }
+
+  runApp(IsygearApp(startSignedIn: signedIn));
 }
 
 class IsygearApp extends StatelessWidget {
-  const IsygearApp({super.key});
+  final bool startSignedIn;
+  const IsygearApp({super.key, required this.startSignedIn});
 
   @override
   Widget build(BuildContext context) {
-    // Returning customers who are still signed in go straight to C3.
-    final signedIn = Supabase.instance.client.auth.currentSession != null;
     return MaterialApp(
       title: 'ISYGEAR Rentals',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      home: signedIn ? const VehiclesScreen() : const LoginScreen(),
+      home: startSignedIn ? const VehiclesScreen() : const LoginScreen(),
     );
   }
 }
