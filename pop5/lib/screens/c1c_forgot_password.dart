@@ -31,14 +31,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     setState(() => _loading = true);
     try {
-      // If using custom Api wrapper: await Api.resetPasswordForEmail(emailText);
       await Supabase.instance.client.auth.resetPasswordForEmail(emailText);
       if (!mounted) return;
 
       showToast(context, 'Reset code sent to your email.');
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => OtpVerificationScreen(email: emailText),
+          builder: (_) => EnterResetCodeScreen(email: emailText),
         ),
       );
     } on AuthException catch (e) {
@@ -54,7 +53,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: BackButton(color: AppColors.text2),
+        leading: const BackButton(color: AppColors.text2),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),

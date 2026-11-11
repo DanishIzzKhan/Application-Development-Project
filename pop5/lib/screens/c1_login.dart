@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'c2_create_account.dart';
 import 'c3_vehicles.dart';
+import 'c1c_forgot_password.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -95,12 +96,18 @@ class _LoginScreenState extends State<LoginScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: GestureDetector(
-                  onTap: () => showToast(
-                      context, 'Forgot password (C1c) is not built yet.'),
-                  child: Text('Forgot password?',
-                      style: inter(14, weight: FontWeight.w600)),
+                onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ForgotPasswordScreen(),
+                    ),
+                  ),
+                  child: Text(
+                    'Forgot password?',
+                    style: inter(14, weight: FontWeight.w600),
+                  ),
                 ),
               ),
+
               const SizedBox(height: 16),
               PrimaryButton(label: 'Log in', loading: _loading, onPressed: _login),
               const SizedBox(height: 16),
