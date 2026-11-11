@@ -9,7 +9,7 @@ import '../widgets/rental_widgets.dart';
 
 /// O3c Customer details — opened from "View customer details ›" on O5 / O6.
 /// App customers: profile, contact, IC (security record) and rental history.
-/// Walk-ins: name, contact number and the IC photo taken on O4.
+/// Walk-ins: name, contact number, and the IC photo if one was taken on O4.
 class CustomerDetailsScreen extends StatelessWidget {
   final OwnerRental rental; // the rental the owner came from
   const CustomerDetailsScreen({super.key, required this.rental});
@@ -38,10 +38,12 @@ class CustomerDetailsScreen extends StatelessWidget {
           _profileCard(c),
           const SizedBox(height: 12),
           _contactCard(context, c),
-          // Everyone has an IC on file: app customers from sign-up (C2b),
-          // walk-ins from the photo taken on O4.
-          const SizedBox(height: 12),
-          _icCard(context, c),
+          // IC on file: app customers from sign-up (C2b); walk-ins only if
+          // the owner took the (optional) photo on O4.
+          if (!c.isWalkIn || rental.walkInIcPhotoTaken) ...[
+            const SizedBox(height: 12),
+            _icCard(context, c),
+          ],
           if (!c.isWalkIn) ...[
             const SizedBox(height: 18),
             const SectionTitle('Rentals'),

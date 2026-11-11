@@ -145,12 +145,22 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
                   const Icon(Icons.shield_outlined,
                       color: AppColors.ink, size: 22),
                   const SizedBox(width: 8),
+                  // Photo is optional on O4: View IC only if one was taken.
                   Expanded(
-                    child: Text('IC photo taken ✓',
-                        style: inter(15, weight: FontWeight.w600)),
+                    child: Text(
+                      r.walkInIcPhotoTaken
+                          ? 'IC photo taken ✓'
+                          : 'No IC photo taken',
+                      style: inter(15,
+                          weight: FontWeight.w600,
+                          color: r.walkInIcPhotoTaken
+                              ? AppColors.ink
+                              : AppColors.hint),
+                    ),
                   ),
-                  SmallButton(
-                      label: 'View IC', primary: false, onPressed: _viewIc),
+                  if (r.walkInIcPhotoTaken)
+                    SmallButton(
+                        label: 'View IC', primary: false, onPressed: _viewIc),
                 ],
               ),
             )

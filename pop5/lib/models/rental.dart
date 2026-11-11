@@ -71,8 +71,8 @@ class OwnerRental {
     required Vehicle vehicle,
     required int minutes,
     required String paymentMethod,
-    required Uint8List icFront,
-    required Uint8List icBack,
+    Uint8List? icFront,
+    Uint8List? icBack,
     DateTime? now,
   }) {
     final t = now ?? DateTime.now();
@@ -91,7 +91,7 @@ class OwnerRental {
       isPaid: true,
       scheduledStart: t,
       scheduledEnd: t.add(Duration(minutes: minutes)),
-      walkInIcPhotoTaken: true,
+      walkInIcPhotoTaken: icFront != null || icBack != null,
       walkInIcFront: icFront,
       walkInIcBack: icBack,
       walkInPhone: phone,

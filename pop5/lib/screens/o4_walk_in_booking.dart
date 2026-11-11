@@ -37,7 +37,7 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
 
   int _minutes = 60; // wireframe default: 1 hr 0 min
   int _payment = 0; // Cash by default
-  // Required IC photos, front and back (security record).
+  // Optional IC photos, front and back (security record).
   Uint8List? _icFront;
   Uint8List? _icBack;
 
@@ -51,8 +51,6 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
   List<String> get _missing => [
         if (_name.text.trim().isEmpty) 'Enter the customer name',
         if (!_phoneOk) 'Enter a valid contact number',
-        if (_icFront == null) 'Take a photo of the IC front',
-        if (_icBack == null) 'Take a photo of the IC back',
       ];
 
   bool get _canCreate => _missing.isEmpty;
@@ -107,8 +105,8 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
       vehicle: _vehicle,
       minutes: _minutes,
       paymentMethod: _payValues[_payment],
-      icFront: _icFront!,
-      icBack: _icBack!,
+      icFront: _icFront,
+      icBack: _icBack,
     );
     showTopNotice(context,
         title: 'Booking ${rental.bookingCode} created',
@@ -174,8 +172,9 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
           ),
           const SizedBox(height: 14),
 
-          // ---- Required IC photos, front + back (O5 and O3c can View IC) ----
-          Text('Customer IC', style: inter(14, weight: FontWeight.w600)),
+          // ---- Optional IC photos, front + back (if taken: View IC on O5 / O3c) ----
+          Text('Customer IC (optional)',
+              style: inter(14, weight: FontWeight.w600)),
           const SizedBox(height: 6),
           Row(
             children: [
@@ -212,7 +211,7 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
 
           const Spacer(),
           const SizedBox(height: 16),
-          // Grey until name, contact number and both IC photos are done.
+          // Grey until name and contact number are filled (IC photos optional).
           // A tap on the grey button shows what is missing.
           GestureDetector(
             onTap: _canCreate ? null : _showMissing,
