@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../config.dart';
 import '../models/vehicle.dart';
 import '../services/api.dart';
 import '../theme.dart';
@@ -22,6 +21,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   VehicleFilter _filter = const VehicleFilter();
   List<Vehicle> _vehicles = [];
   ({String vehicle, DateTime end})? _active;
+  int _unread = 0;
   bool _loading = true;
   String? _error;
   Timer? _ticker;
@@ -51,11 +51,13 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       final results = await Future.wait([
         Api.fetchVehicles(_filter),
         Api.fetchActiveRental(),
+        Api.fetchUnreadCount(),
       ]);
       if (!mounted) return;
       setState(() {
         _vehicles = results[0] as List<Vehicle>;
         _active = results[1] as ({String vehicle, DateTime end})?;
+        _unread = results[2] as int;
       });
     } on PostgrestException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -201,7 +203,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                 ),
               ),
             ),
-            _BottomNav(onSoon: _soon),
+            _BottomNav(onSoon: _soon, unread: _unread),
           ],
         ),
       ),
@@ -277,7 +279,8 @@ class _VehicleCard extends StatelessWidget {
 
 class _BottomNav extends StatelessWidget {
   final void Function(String) onSoon;
-  const _BottomNav({required this.onSoon});
+  final int unread;
+  const _BottomNav({required this.onSoon, required this.unread});
 
   @override
   Widget build(BuildContext context) {
@@ -294,7 +297,7 @@ class _BottomNav extends StatelessWidget {
               () => onSoon('My rentals (C12)')),
           _item(Icons.notifications_none, 'Notifications', false,
               () => onSoon('Notifications (C13)'),
-              badge: AppConfig.notificationBadge),
+              badge: unread),
           _item(Icons.settings_outlined, 'Settings', false,
               () => onSoon('Settings (C14)')),
         ],
