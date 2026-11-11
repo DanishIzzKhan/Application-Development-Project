@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
 import 'o6b_collect_payment.dart';
+import 'o6c_rental_completed.dart';
 
 /// O6 End rental — opened from "End" (or tapping an Active row) on O3.
 /// Pops with `true` when the owner ends the rental, so O3 removes it.
@@ -233,19 +234,34 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
     //   status 'completed'; an Edge Function refunds any mistaken charge.
     //   It also saves a vehicle_condition_checks row (stage 'return',
     //   condition, notes = _issueNote, photo_url = uploaded _issuePhoto).
-    //   Then O6c Rental completed.
-    showTopNotice(context,
-        title: '${_r.vehicleName} rental ended',
-        lines: [
-          if (collected != null)
-            '${formatRM(collected)} received · ${_methodLabel(method)}',
-          if (_refundBlocks > 0)
-            '${formatRM(_money(_refundBlocks))} will be refunded',
-          if (_condition == VehicleCondition.damaged) 'Marked for repair',
-          if (_condition == VehicleCondition.minorIssue) 'Issue noted',
-        ],
-        type: NoticeType.success);
-    Navigator.of(context).pop(true);
+
+    // O6c replaces O6. `result: true` tells O3 the rental ended, so O3
+    // removes it from Active.
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => RentalCompletedScreen(
+          rental: _r,
+          returnTime: _returnTime,
+          lateMinutes: _lateMin,
+          totalPaid: _total,
+          paymentLine: _paymentLine(collected, method),
+          refunded: _money(_refundBlocks),
+          condition: _condition,
+          charges: _chargeRows(),
+        ),
+      ),
+      result: true,
+    );
+  }
+
+  /// "Payment" row on O6c, e.g. "Late charge auto-charged ✓".
+  String _paymentLine(double? collected, String? method) {
+    if (collected != null)
+      return 'Late charge paid · ${_methodLabel(method)} ✓';
+    if (_waived && _lateBlocks > 0) return 'Late charge waived';
+    if (_owedBlocks > 0 && !_r.isWalkIn) return 'Late charge auto-charged ✓';
+    if (_r.isWalkIn) return 'Paid at the counter ✓';
+    return _r.paidOnline ? 'Paid online ✓' : 'Paid at the counter ✓';
   }
 
   String _methodLabel(String? m) => switch (m) {
