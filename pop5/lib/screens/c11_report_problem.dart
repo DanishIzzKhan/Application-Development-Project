@@ -49,7 +49,8 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
       });
 
       if (!mounted) return;
-      showToast(context, 'Report submitted successfully. Support team will contact you.');
+      showToast(context,
+          'Report submitted successfully. Support team will contact you.');
       Navigator.pop(context);
     } catch (e) {
       if (mounted) {
@@ -77,29 +78,34 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
                   style: inter(14, color: AppColors.text2)),
               const SizedBox(height: 20),
               DropdownButtonFormField<String>(
-                value: _selectedCategory,
+                initialValue: _selectedCategory,
                 dropdownColor: Colors.white,
                 decoration: InputDecoration(
                   labelText: 'Problem Category',
                   labelStyle: inter(14, color: AppColors.hint),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.divider, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: AppColors.divider, width: 1.5),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.divider, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: AppColors.divider, width: 1.5),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.dark, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: AppColors.dark, width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 ),
                 items: _categories.map((category) {
                   return DropdownMenuItem(
                     value: category,
-                    child: Text(category, style: inter(14, weight: FontWeight.w500)),
+                    child: Text(category,
+                        style: inter(14, weight: FontWeight.w500)),
                   );
                 }).toList(),
                 onChanged: (value) {
@@ -118,15 +124,18 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
                   hintStyle: inter(14, color: AppColors.hint),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.divider, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: AppColors.divider, width: 1.5),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.divider, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: AppColors.divider, width: 1.5),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.dark, width: 1.5),
+                    borderSide:
+                        const BorderSide(color: AppColors.dark, width: 1.5),
                   ),
                   contentPadding: const EdgeInsets.all(16),
                 ),
@@ -142,9 +151,12 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 48),
                   side: const BorderSide(color: AppColors.border, width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
                 ),
-                child: Text('Cancel', style: inter(14, weight: FontWeight.w600, color: AppColors.ink)),
+                child: Text('Cancel',
+                    style: inter(14,
+                        weight: FontWeight.w600, color: AppColors.ink)),
               ),
               const SizedBox(height: 16),
             ],

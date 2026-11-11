@@ -25,7 +25,8 @@ class OwnerRental {
   final String? depositNote; // walk-ins only, e.g. "IC copy"
   final bool walkInIcPhotoTaken; // walk-ins only: IC photo taken on O4
   final String? walkInPhone; // walk-ins only (rentals.walk_in_phone)
-  final String? paymentMethod; // 'Cash' | 'TnG' | 'Bank QR' | 'Card' (payments table)
+  final String?
+      paymentMethod; // 'Cash' | 'TnG' | 'Bank QR' | 'Card' (payments table)
 
   const OwnerRental({
     required this.id,
@@ -59,7 +60,8 @@ class OwnerRental {
     DateTime? now,
   }) {
     final t = now ?? DateTime.now();
-    final n = Random().nextInt(9000) + 1000; // sample code until the Api makes one
+    final n =
+        Random().nextInt(9000) + 1000; // sample code until the Api makes one
     return OwnerRental(
       id: 'RNT-$n',
       bookingCode: 'ISY-$n',
@@ -171,8 +173,8 @@ class ShopPrices {
   static const scooter = 10.0;
 }
 
-Vehicle _v(String id, String name, String type, double price) => Vehicle(
-    id: id, name: name, type: type, pricePer20Min: price, status: 'available');
+Vehicle _v(String id, String name, String type, double price) =>
+    Vehicle(id: id, type: type, pricePer20Min: price, status: 'available');
 
 /// Sample fleet. Each sample rental below uses one of these, so its price
 /// always comes from the vehicle.
