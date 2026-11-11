@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'o3_rentals.dart';
+import 'o9_vehicles.dart';
 
 /// Owner app frame: shows one tab at a time and the bottom bar from the
 /// Figma wireframe (Home · Rentals · Map · Vehicles · More).
@@ -27,7 +28,8 @@ class _OwnerShellState extends State<OwnerShell> {
     _PlaceholderTab(title: 'Home'), // O2 Home
     RentalsScreen(), // O3 Rentals
     _PlaceholderTab(title: 'Live map'), // O7 Live map
-    _PlaceholderTab(title: 'Vehicles'), // O9 Vehicles
+    O9VehiclesScreen(), // O9 Vehicles
+
     _PlaceholderTab(title: 'More'), // O15 More
   ];
 
@@ -108,8 +110,7 @@ class _PlaceholderTab extends StatelessWidget {
     return Scaffold(
       appBar: AppHeader(title: title, showBack: false),
       body: Center(
-        child: Text('Coming soon',
-            style: inter(15, color: AppColors.hint)),
+        child: Text('Coming soon', style: inter(15, color: AppColors.hint)),
       ),
     );
   }
