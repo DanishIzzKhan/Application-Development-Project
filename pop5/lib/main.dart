@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config.dart';
 import 'screens/c1_login.dart';
-import 'screens/c3_vehicles.dart';
+import 'screens/role_gate.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -34,7 +34,8 @@ class IsygearApp extends StatelessWidget {
       title: 'ISYGEAR Rentals',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      home: startSignedIn ? const VehiclesScreen() : const LoginScreen(),
+      // Already signed in -> RoleGate decides owner app or C3.
+      home: startSignedIn ? const RoleGate() : const LoginScreen(),
     );
   }
 }
