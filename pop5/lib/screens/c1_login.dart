@@ -5,7 +5,7 @@ import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'c2_create_account.dart';
-import 'c3_vehicles.dart';
+import 'role_gate.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -36,7 +36,8 @@ class _LoginScreenState extends State<LoginScreen> {
       await Api.signIn(_id.text, _password.text);
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const VehiclesScreen()),
+        // RoleGate checks users.role: owner -> owner app, customer -> C3.
+        MaterialPageRoute(builder: (_) => const RoleGate()),
         (_) => false,
       );
     } on AuthException catch (e) {
