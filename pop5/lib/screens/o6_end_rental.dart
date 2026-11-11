@@ -8,6 +8,7 @@ import '../models/rental.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
+import 'o6b_collect_payment.dart';
 
 /// O6 End rental — opened from "End" (or tapping an Active row) on O3.
 /// Pops with `true` when the owner ends the rental, so O3 removes it.
@@ -168,9 +169,32 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
     showTopNotice(context, title: 'Customer details: coming soon');
   }
 
-  void _collectPayment() {
-    // Later: O6b Collect payment.
-    showTopNotice(context, title: 'Collect payment: coming soon');
+  /// Opens O6b. Used for a late walk-in ("Collect RM X · end rental") and
+  /// for "Auto-charge failed? Collect payment manually ›" (app customers).
+  /// When O6b returns a payment method, the rental is ended.
+  Future<void> _collectPayment() async {
+    if (!_canEnd) {
+      _showMissing(); // e.g. issue not described yet
+      return;
+    }
+    // Walk-in: the late blocks not paid yet. App customer whose auto-charge
+    // failed: all late blocks owed.
+    final blocks = _r.isWalkIn ? _extraBlocks : _owedBlocks;
+    if (blocks == 0) {
+      showTopNotice(context, title: 'Nothing to collect');
+      return;
+    }
+    final method = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => CollectPaymentScreen(
+          rental: _r,
+          blocks: blocks,
+          amount: _money(blocks),
+        ),
+      ),
+    );
+    if (method == null || !mounted) return; // Cancel -> stay on O6
+    _finishEnd(collected: _money(blocks), method: method);
   }
 
   Future<void> _takeIssuePhoto() async {
@@ -199,6 +223,11 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
       _collectPayment();
       return;
     }
+    _finishEnd();
+  }
+
+  /// Ends the rental. [collected] / [method] are set when O6b took a payment.
+  void _finishEnd({double? collected, String? method}) {
     // Later: Api.endRental(rental.id, returnTime: _returnTime,
     //   condition: _condition, waived: _waived) sets actual_end_time and
     //   status 'completed'; an Edge Function refunds any mistaken charge.
@@ -208,6 +237,8 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
     showTopNotice(context,
         title: '${_r.vehicleName} rental ended',
         lines: [
+          if (collected != null)
+            '${formatRM(collected)} received · ${_methodLabel(method)}',
           if (_refundBlocks > 0)
             '${formatRM(_money(_refundBlocks))} will be refunded',
           if (_condition == VehicleCondition.damaged) 'Marked for repair',
@@ -216,6 +247,13 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
         type: NoticeType.success);
     Navigator.of(context).pop(true);
   }
+
+  String _methodLabel(String? m) => switch (m) {
+        'Cash' => 'Cash',
+        'TnG' => 'Touch ’n Go / bank QR',
+        'Card' => 'paid in the app',
+        _ => 'paid',
+      };
 
   // ---------- UI ----------
 
