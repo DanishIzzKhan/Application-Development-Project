@@ -5,16 +5,16 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'c1e_reset_password.dart';
 
-class OtpVerificationScreen extends StatefulWidget {
+class EnterResetCodeScreen extends StatefulWidget {
   final String email;
 
-  const OtpVerificationScreen({super.key, required this.email});
+  const EnterResetCodeScreen({super.key, required this.email});
 
   @override
-  State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
+  State<EnterResetCodeScreen> createState() => _EnterResetCodeScreenState();
 }
 
-class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
+class _EnterResetCodeScreenState extends State<EnterResetCodeScreen> {
   final _otp = TextEditingController();
   bool _loading = false;
 
@@ -42,7 +42,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       if (!mounted) return;
 
       if (response.session != null) {
-        // Authenticated temporary session created for password reset
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
         );
@@ -71,7 +70,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: BackButton(color: AppColors.text2),
+        leading: const BackButton(color: AppColors.text2),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -81,7 +80,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Enter OTP Code',
+              Text('Enter Reset Code',
                   style: inter(24, weight: FontWeight.w700)),
               const SizedBox(height: 8),
               Text(
@@ -98,7 +97,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               ),
               const SizedBox(height: 24),
               PrimaryButton(
-                label: 'Verify & Continue',
+                label: 'Verify Code',
                 loading: _loading,
                 onPressed: _verifyOtp,
               ),
