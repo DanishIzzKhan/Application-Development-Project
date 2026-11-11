@@ -5,16 +5,11 @@ import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'c2_create_account.dart';
-<<<<<<< Updated upstream
 import 'role_gate.dart';
-=======
-<<<<<<< HEAD
 import 'c3_vehicles.dart';
 import 'c1c_forgot_password.dart';
-=======
 import 'role_gate.dart';
->>>>>>> d649feb29d7e1838712ce393a19abd78ec1177c9
->>>>>>> Stashed changes
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
