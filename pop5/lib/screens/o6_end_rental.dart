@@ -8,6 +8,7 @@ import '../models/rental.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
+import 'o3c_customer_details.dart';
 import 'o6b_collect_payment.dart';
 import 'o6c_rental_completed.dart';
 
@@ -166,8 +167,9 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
   }
 
   void _openCustomerDetails() {
-    // Later: O3c Customer details.
-    showTopNotice(context, title: 'Customer details: coming soon');
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CustomerDetailsScreen(rental: _r),
+    ));
   }
 
   /// Opens O6b. Used for a late walk-in ("Collect RM X · end rental") and
@@ -256,8 +258,9 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
 
   /// "Payment" row on O6c, e.g. "Late charge auto-charged ✓".
   String _paymentLine(double? collected, String? method) {
-    if (collected != null)
+    if (collected != null) {
       return 'Late charge paid · ${_methodLabel(method)} ✓';
+    }
     if (_waived && _lateBlocks > 0) return 'Late charge waived';
     if (_owedBlocks > 0 && !_r.isWalkIn) return 'Late charge auto-charged ✓';
     if (_r.isWalkIn) return 'Paid at the counter ✓';
@@ -351,14 +354,12 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
               ),
             ),
           ],
-          if (!_r.isWalkIn) ...[
-            const SizedBox(height: 14),
-            InkWell(
-              onTap: _openCustomerDetails,
-              child: Text('View customer details ›',
-                  style: inter(13, weight: FontWeight.w600)),
-            ),
-          ],
+          const SizedBox(height: 14),
+          InkWell(
+            onTap: _openCustomerDetails,
+            child: Text('View customer details ›',
+                style: inter(13, weight: FontWeight.w600)),
+          ),
 
           const Spacer(),
           const SizedBox(height: 16),
