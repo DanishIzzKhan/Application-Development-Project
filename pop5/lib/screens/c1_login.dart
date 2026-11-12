@@ -5,7 +5,11 @@ import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'c2_create_account.dart';
+import 'role_gate.dart';
 import 'c3_vehicles.dart';
+import 'c1c_forgot_password.dart';
+import 'role_gate.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -36,7 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
       await Api.signIn(_id.text, _password.text);
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const VehiclesScreen()),
+        // RoleGate checks users.role: owner -> owner app, customer -> C3.
+        MaterialPageRoute(builder: (_) => const RoleGate()),
         (_) => false,
       );
     } on AuthException catch (e) {
@@ -81,6 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _id,
                 keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.next,
+                
               ),
               const SizedBox(height: 16),
               AppField(
@@ -94,12 +100,18 @@ class _LoginScreenState extends State<LoginScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: GestureDetector(
-                  onTap: () => showToast(
-                      context, 'Forgot password (C1c) is not built yet.'),
-                  child: Text('Forgot password?',
-                      style: inter(14, weight: FontWeight.w600)),
+                onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ForgotPasswordScreen(),
+                    ),
+                  ),
+                  child: Text(
+                    'Forgot password?',
+                    style: inter(14, weight: FontWeight.w600),
+                  ),
                 ),
               ),
+
               const SizedBox(height: 16),
               PrimaryButton(label: 'Log in', loading: _loading, onPressed: _login),
               const SizedBox(height: 16),

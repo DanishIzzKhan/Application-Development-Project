@@ -63,6 +63,37 @@ class Api {
             .signInWithPassword(email: email, password: password);
       }, () {});
 
+  // ---------- Role after login (RoleGate) ----------
+
+  /// 'owner' or 'customer' for the signed-in user (users.role).
+  /// Not signed in, row missing, or any error -> 'customer', so the owner
+  /// side is never opened by mistake. RLS still protects owner data.
+  static Future<String> fetchMyRole() async {
+    try {
+      final uid = supabase.auth.currentUser?.id;
+      if (uid == null) return 'customer';
+      final row = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', uid)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 8));
+      return row?['role'] == 'owner' ? 'owner' : 'customer';
+    } catch (e) {
+      debugPrint('Could not read role, treating as customer. $e');
+      return 'customer';
+    }
+  }
+
+  /// Logs out of Supabase Auth.
+  static Future<void> signOut() async {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      debugPrint('Sign out failed: $e');
+    }
+  }
+
   // ---------- C2 / C2b create account ----------
 
   /// Returns 'username', 'phone' or null (no conflict).
