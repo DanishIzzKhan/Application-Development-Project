@@ -63,37 +63,6 @@ class Api {
             .signInWithPassword(email: email, password: password);
       }, () {});
 
-  // ---------- Role after login (RoleGate) ----------
-
-  /// 'owner' or 'customer' for the signed-in user (users.role).
-  /// Not signed in, row missing, or any error -> 'customer', so the owner
-  /// side is never opened by mistake. RLS still protects owner data.
-  static Future<String> fetchMyRole() async {
-    try {
-      final uid = supabase.auth.currentUser?.id;
-      if (uid == null) return 'customer';
-      final row = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', uid)
-          .maybeSingle()
-          .timeout(const Duration(seconds: 8));
-      return row?['role'] == 'owner' ? 'owner' : 'customer';
-    } catch (e) {
-      debugPrint('Could not read role, treating as customer. $e');
-      return 'customer';
-    }
-  }
-
-  /// Logs out of Supabase Auth.
-  static Future<void> signOut() async {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      debugPrint('Sign out failed: $e');
-    }
-  }
-
   // ---------- C2 / C2b create account ----------
 
   /// Returns 'username', 'phone' or null (no conflict).
@@ -168,13 +137,13 @@ class Api {
       }, () => _sampleVehicles(f));
 
   /// Banner on C3: the customer's rental that is checked in / running.
-  static Future<({String vehicle, DateTime end})?> fetchActiveRental() =>
-      _orPreview<({String vehicle, DateTime end})?>(() async {
+  static Future<({String id, String vehicle, DateTime end})?> fetchActiveRental() =>
+      _orPreview<({String id, String vehicle, DateTime end})?>(() async {
         final uid = supabase.auth.currentUser?.id;
         if (uid == null) return null;
         final rows = await supabase
             .from('rentals')
-            .select('scheduled_end_time, vehicles(id, type)')
+            .select('id, scheduled_end_time, vehicles(id, type)')
             .eq('customer_id', uid)
             .inFilter('status', ['checked_in', 'active'])
             .order('scheduled_end_time')
@@ -183,10 +152,12 @@ class Api {
         final r = rows.first;
         final v = r['vehicles'] as Map;
         return (
+          id: r['id'] as String,
           vehicle: '${v['type']} ${v['id']}',
           end: DateTime.parse(r['scheduled_end_time'] as String).toLocal(),
         );
       }, () => (
+            id: 'RNT-10000',
             vehicle: 'Bicycle BK-01',
             end: DateTime.now().add(const Duration(minutes: 42)),
           ));
@@ -236,6 +207,28 @@ class Api {
       }, () => 'RNT-${DateTime.now().millisecondsSinceEpoch % 100000}');
 
   static String get lateFee => AppConfig.lateFeeLabel;
+
+
+  // ---------- Authentication helpers ----------
+
+  static Future<String?> fetchMyRole() async {
+    final uid = supabase.auth.currentUser?.id;
+
+    if (uid == null) return null;
+
+    final row = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', uid)
+        .maybeSingle();
+
+    return row?['role'] as String?;
+  }
+
+  static Future<void> signOut() async {
+    await supabase.auth.signOut();
+  }
+
 
   // ---------- sample data (preview mode only) ----------
 

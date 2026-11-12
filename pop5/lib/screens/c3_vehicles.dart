@@ -9,6 +9,9 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'c4_filter_panel.dart';
 import 'c5_book_vehicle.dart';
+import 'c9_active_rental.dart';
+import 'c9b_rental_ten_min_left.dart';
+import 'c9c_rental_overdue.dart';
 
 class VehiclesScreen extends StatefulWidget {
   const VehiclesScreen({super.key});
@@ -20,7 +23,7 @@ class VehiclesScreen extends StatefulWidget {
 class _VehiclesScreenState extends State<VehiclesScreen> {
   VehicleFilter _filter = const VehicleFilter();
   List<Vehicle> _vehicles = [];
-  ({String vehicle, DateTime end})? _active;
+  ({String id, String vehicle, DateTime end})? _active;
   int _unread = 0;
   bool _loading = true;
   String? _error;
@@ -56,7 +59,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       if (!mounted) return;
       setState(() {
         _vehicles = results[0] as List<Vehicle>;
-        _active = results[1] as ({String vehicle, DateTime end})?;
+        _active = results[1] as ({String id, String vehicle, DateTime end})?;
         _unread = results[2] as int;
       });
     } on PostgrestException catch (e) {
@@ -76,10 +79,26 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   }
 
   Future<void> _book(Vehicle v) async {
-    final booked = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => BookVehicleScreen(vehicle: v)),
     );
-    if (booked == true) _load();
+    // C8 "Done" jumps straight back here, so always refresh on return.
+    if (mounted) _load();
+  }
+
+  /// Banner tap: more than 10 min left -> C9, 10 min or less -> C9b,
+  /// past the end time -> C9c.
+  Future<void> _openActive() async {
+    final a = _active;
+    if (a == null) return;
+    final left = a.end.difference(DateTime.now());
+    final Widget screen = left.isNegative
+        ? RentalOverdueScreen(bookingId: a.id)
+        : left <= const Duration(minutes: 10)
+            ? RentalTenMinLeftScreen(bookingId: a.id)
+            : ActiveRentalScreen(bookingId: a.id);
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    if (mounted) _load();
   }
 
   String _remaining(DateTime end) {
@@ -110,7 +129,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                   children: [
                     if (_active != null) ...[
                       GestureDetector(
-                        onTap: () => _soon('Active rental (C9)'),
+                        onTap: _openActive,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 10),

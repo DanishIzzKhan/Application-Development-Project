@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'c10_extend_rental.dart';
 
 class RentalTenMinLeftScreen extends StatefulWidget {
   final String bookingId;
@@ -90,6 +91,14 @@ class _RentalTenMinLeftScreenState extends State<RentalTenMinLeftScreen> {
     }
   }
 
+  Future<void> _openExtend() async {
+    final extended = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+          builder: (_) => ExtendRentalScreen(bookingId: widget.bookingId)),
+    );
+    if (extended == true && mounted) _fetchRental();
+  }
+
   @override
   Widget build(BuildContext context) {
     final vehicleName = _rentalData?['vehicles']?['name'] ?? 'Vehicle';
@@ -156,7 +165,7 @@ class _RentalTenMinLeftScreenState extends State<RentalTenMinLeftScreen> {
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
-                          onPressed: () => showToast(context, 'Navigate to Extend Rental (C10)'),
+                          onPressed: _openExtend,
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size(double.infinity, 48),
                             side: const BorderSide(color: AppColors.border, width: 1.5),

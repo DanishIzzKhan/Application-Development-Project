@@ -5,6 +5,8 @@ import '../models/vehicle.dart';
 import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'c7_waiting_for_payment.dart';
+import 'c8_receipt.dart';
 
 enum PayMethod { touchNGo, duitNow, counter }
 
@@ -44,23 +46,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ? 'Confirm booking · pay at counter'
       : 'Pay $_totalLabel now';
 
-  /// UI only for now: saves the booking (pending_payment) and returns to the list.
-  /// The gateway (C8 receipt) and "waiting for payment" (C7) are not built yet.
+  /// Saves the booking (pending_payment), opens C7 to wait for payment and,
+  /// once paid, C8 for the receipt. Pops with true so C5 and C3 refresh.
   Future<void> _confirm() async {
     setState(() => _loading = true);
     try {
-      await Api.createBooking(
+      final id = await Api.createBooking(
         vehicle: widget.vehicle,
         start: widget.start ?? DateTime.now(),
         durationMinutes: widget.durationMinutes,
       );
       if (!mounted) return;
-      showToast(
-        context,
-        _method == PayMethod.counter
-            ? 'Booking saved. Pay at the counter. (C7 is not built yet.)'
-            : 'Booking saved. Payment gateway is not connected yet. (C8 is next.)',
+
+      final paid = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => WaitingPaymentScreen(bookingId: id)),
       );
+      if (!mounted) return;
+
+      if (paid == true) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ReceiptScreen(bookingId: id)),
+        );
+        // C8 "Done" pops back to the first screen, so C6 may already be gone.
+        if (!mounted) return;
+      }
       Navigator.of(context).pop(true);
     } on PostgrestException catch (e) {
       if (mounted) showToast(context, e.message);

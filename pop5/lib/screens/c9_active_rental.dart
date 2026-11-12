@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'c10_extend_rental.dart';
+import 'c11_report_problem.dart';
 
 class ActiveRentalScreen extends StatefulWidget {
   final String bookingId;
@@ -110,6 +112,19 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
     }
   }
 
+  Future<void> _openExtend() async {
+    final extended = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+          builder: (_) => ExtendRentalScreen(bookingId: widget.bookingId)),
+    );
+    if (extended == true && mounted) _fetchActiveRental();
+  }
+
+  void _openReport() {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ReportProblemScreen(bookingId: widget.bookingId)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final vehicleName = _rentalData?['vehicles']?['name'] ?? 'Vehicle';
@@ -173,7 +188,7 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
-                          onPressed: () => showToast(context, 'Navigate to Extend Rental (C10)'),
+                          onPressed: _openExtend,
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size(double.infinity, 48),
                             side: const BorderSide(color: AppColors.border, width: 1.5),
@@ -183,7 +198,7 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
-                          onPressed: () => showToast(context, 'Navigate to Report a Problem (C11)'),
+                          onPressed: _openReport,
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size(double.infinity, 48),
                             side: const BorderSide(color: AppColors.border, width: 1.5),
