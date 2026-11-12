@@ -6,6 +6,15 @@ import '../widgets/common.dart';
 import 'c1_login.dart';
 import 'o3_rentals.dart';
 import 'o9_vehicles.dart';
+import 'o2_home.dart';
+import 'o7_live_map.dart';
+import 'o8_alerts.dart';
+import 'o9_vehicles.dart';
+import 'o11_payments.dart';
+import 'o12_ai_maintenance.dart';
+import 'o14_reports.dart';
+import 'o15_more.dart';
+import 'o16_settings.dart';
 
 /// Owner app frame: shows one tab at a time and the bottom bar from the
 /// Figma wireframe (Home · Rentals · Map · Vehicles · More).
@@ -26,18 +35,48 @@ class _OwnerShellState extends State<OwnerShell> {
 
   // IndexedStack keeps every tab alive, so switching tabs and coming back
   // does not reset the Rentals list.
-  static const _pages = <Widget>[
-    _PlaceholderTab(title: 'Home'), // O2 Home
-    RentalsScreen(), // O3 Rentals
-    _PlaceholderTab(title: 'Live map'), // O7 Live map
-    O9VehiclesScreen(), // O9 Vehicles
-    _PlaceholderTab(title: 'More', showLogout: true), // O15 More
-  ];
 
   @override
   Widget build(BuildContext context) {
+    void pushPage(Widget page) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    }
+
+    final pages = <Widget>[
+      O2HomeScreen(
+        onOpenAlerts: () => pushPage(
+          O8AlertsScreen(
+            onOpenMap: () {
+              Navigator.pop(context);
+              setState(() => _tab = 2);
+            },
+          ),
+        ),
+        onOpenSettings: () => pushPage(const O16SettingsScreen()),
+        onOpenReports: () => pushPage(const O14ReportsScreen()),
+        onOpenMaintenance: () => pushPage(const O12AiMaintenanceScreen()),
+      ),
+      const RentalsScreen(), // O3 Rentals
+      const O7LiveMapScreen(), // O7 Live map
+      const O9VehiclesScreen(), // O9 Vehicles
+      O15MoreScreen(
+        onOpenPayments: () => pushPage(const O11PaymentsScreen()),
+        onOpenMaintenance: () => pushPage(const O12AiMaintenanceScreen()),
+        onOpenAlerts: () => pushPage(
+          O8AlertsScreen(
+            onOpenMap: () {
+              Navigator.pop(context);
+              setState(() => _tab = 2);
+            },
+          ),
+        ),
+        onOpenReports: () => pushPage(const O14ReportsScreen()),
+        onOpenSettings: () => pushPage(const O16SettingsScreen()),
+      ),
+    ];
+
     return Scaffold(
-      body: IndexedStack(index: _tab, children: _pages),
+      body: IndexedStack(index: _tab, children: pages),
       bottomNavigationBar: SafeArea(
         child: _OwnerBottomNav(
           current: _tab,
