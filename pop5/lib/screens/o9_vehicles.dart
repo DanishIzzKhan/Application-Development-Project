@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
+import 'o10_add_vehicle.dart';
 
 /// ADP-117: O9 Vehicles Management Screen (Figma Wireframe Version)
 class O9VehiclesScreen extends StatefulWidget {
@@ -63,7 +64,12 @@ class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.add, color: AppColors.ink, size: 26),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const O10AddVehicleScreen()),
+              );
+            },
           ),
         ],
       ),
