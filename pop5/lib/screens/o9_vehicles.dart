@@ -12,7 +12,6 @@ class O9VehiclesScreen extends StatefulWidget {
 class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
   String _selectedCategory = 'All';
 
-  // 车辆测试数据
   final _vehicles = [
     {
       'name': 'Bicycle B01',
