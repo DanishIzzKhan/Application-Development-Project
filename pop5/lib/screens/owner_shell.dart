@@ -5,6 +5,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'c1_login.dart';
 import 'o3_rentals.dart';
+import 'o9_vehicles.dart';
 
 /// Owner app frame: shows one tab at a time and the bottom bar from the
 /// Figma wireframe (Home · Rentals · Map · Vehicles · More).
@@ -29,7 +30,7 @@ class _OwnerShellState extends State<OwnerShell> {
     _PlaceholderTab(title: 'Home'), // O2 Home
     RentalsScreen(), // O3 Rentals
     _PlaceholderTab(title: 'Live map'), // O7 Live map
-    _PlaceholderTab(title: 'Vehicles'), // O9 Vehicles
+    O9VehiclesScreen(), // O9 Vehicles
     _PlaceholderTab(title: 'More', showLogout: true), // O15 More
   ];
 
