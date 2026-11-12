@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'vehicle.dart';
 
@@ -24,9 +25,18 @@ class OwnerRental {
   final DateTime scheduledEnd;
   final String? depositNote; // walk-ins only, e.g. "IC copy"
   final bool walkInIcPhotoTaken; // walk-ins only: IC photo taken on O4
+
+  /// The walk-in's IC photos from O4, front and back (kept in memory for now).
+  /// Later: uploaded to the private ic-documents bucket, paths on the rental.
+  final Uint8List? walkInIcFront;
+  final Uint8List? walkInIcBack;
   final String? walkInPhone; // walk-ins only (rentals.walk_in_phone)
   final String?
       paymentMethod; // 'Cash' | 'TnG' | 'Bank QR' | 'Card' (payments table)
+
+  /// When the owner tapped "Returned" on O3 (vehicle physically back).
+  /// O6 uses it as the actual return time. Null = not back yet.
+  final DateTime? returnedAt;
 
   const OwnerRental({
     required this.id,
@@ -44,9 +54,14 @@ class OwnerRental {
     this.paidOnline = false,
     this.depositNote,
     this.walkInIcPhotoTaken = false,
+    this.walkInIcFront,
+    this.walkInIcBack,
     this.walkInPhone,
     this.paymentMethod,
+    this.returnedAt,
   });
+
+  bool get isReturned => returnedAt != null;
 
   /// New walk-in booking made by the owner on O4.
   /// Paid at the counter, not tracked on the map, waiting for handover (O5).
@@ -56,7 +71,8 @@ class OwnerRental {
     required Vehicle vehicle,
     required int minutes,
     required String paymentMethod,
-    required bool icPhotoTaken,
+    Uint8List? icFront,
+    Uint8List? icBack,
     DateTime? now,
   }) {
     final t = now ?? DateTime.now();
@@ -75,7 +91,9 @@ class OwnerRental {
       isPaid: true,
       scheduledStart: t,
       scheduledEnd: t.add(Duration(minutes: minutes)),
-      walkInIcPhotoTaken: icPhotoTaken,
+      walkInIcPhotoTaken: icFront != null || icBack != null,
+      walkInIcFront: icFront,
+      walkInIcBack: icBack,
       walkInPhone: phone,
       paymentMethod: paymentMethod,
     );
@@ -118,7 +136,39 @@ class OwnerRental {
   int lateBlocks(DateTime now) => lateBlocksFor(minutesLate(now));
   double lateCharge(DateTime now) => lateBlocks(now) * lateRatePerBlock;
 
+  /// Late blocks already auto-charged to the saved card by [now].
+  /// Walk-ins have no saved card, so nothing is auto-charged.
+  /// Auto-charging stops once the owner taps "Returned".
+  /// Sample data: assumes the auto-charge ran on time.
+  /// Later: rentals.late_blocks_charged from the database.
+  int autoChargedBlocks(DateTime now) =>
+      isWalkIn ? 0 : lateBlocks(returnedAt ?? now);
+
   // ---------- Status changes (sample data only, until Api exists) ----------
+
+  /// Copy of this rental after the owner taps "Returned" on O3.
+  OwnerRental markedReturned(DateTime at) => OwnerRental(
+        id: id,
+        bookingCode: bookingCode,
+        vehicleName: vehicleName,
+        customerName: customerName,
+        isWalkIn: isWalkIn,
+        status: status,
+        blocksBooked: blocksBooked,
+        ratePerBlock: ratePerBlock,
+        lateRatePerBlock: lateRatePerBlock,
+        isPaid: isPaid,
+        paidOnline: paidOnline,
+        scheduledStart: scheduledStart,
+        scheduledEnd: scheduledEnd,
+        depositNote: depositNote,
+        walkInIcPhotoTaken: walkInIcPhotoTaken,
+        walkInIcFront: walkInIcFront,
+        walkInIcBack: walkInIcBack,
+        walkInPhone: walkInPhone,
+        paymentMethod: paymentMethod,
+        returnedAt: at,
+      );
 
   /// Copy of this rental after the owner taps "Start rental" on O5:
   /// the timer starts now and runs for the booked duration.
@@ -138,6 +188,8 @@ class OwnerRental {
         scheduledEnd: now.add(Duration(minutes: durationMinutes)),
         depositNote: depositNote,
         walkInIcPhotoTaken: walkInIcPhotoTaken,
+        walkInIcFront: walkInIcFront,
+        walkInIcBack: walkInIcBack,
         walkInPhone: walkInPhone,
         paymentMethod: paymentMethod,
       );

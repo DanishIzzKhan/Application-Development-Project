@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -72,9 +73,8 @@ class OutlinedCard extends StatelessWidget {
         color: color,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: error
-              ? errorRed
-              : (strong ? AppColors.dark : AppColors.divider),
+          color:
+              error ? errorRed : (strong ? AppColors.dark : AppColors.divider),
           width: (strong || error) ? 2 : 1.5,
         ),
       ),
@@ -170,10 +170,153 @@ class RentalSummaryCard extends StatelessWidget {
             InkWell(
               onTap: onLinkTap,
               child: Text(linkText!,
-                  style: inter(13,
-                      weight: FontWeight.w600, color: AppColors.ink)),
+                  style:
+                      inter(13, weight: FontWeight.w600, color: AppColors.ink)),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Opens the customer's IC (security record) after a confirmation.
+/// Used by O5 and O3c. Every view must be recorded.
+/// [front] / [back] = the walk-in's IC photos taken on O4. A missing side
+/// shows a sample box (app customers, until the ic-documents bucket is
+/// connected).
+Future<void> showIcViewer(BuildContext context, String customer,
+    {Uint8List? front, Uint8List? back}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('View IC?', style: inter(18, weight: FontWeight.w700)),
+      content: Text(
+        'Open only when needed, e.g. if a vehicle is lost, stolen or '
+        'damaged. This view will be recorded.',
+        style: inter(14, color: AppColors.text2),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: Text('Cancel', style: inter(14, color: AppColors.text2)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text('View IC', style: inter(14, weight: FontWeight.w700)),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+
+  // Later: Api.logIcView(customerId) writes the IC access log entry, then
+  // the photos are loaded from the private ic-documents bucket.
+  showTopNotice(context, title: 'IC view recorded', type: NoticeType.success);
+
+  // One side of the IC: the real photo, or a sample box.
+  Widget side(String label, Uint8List? photo) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(label, style: inter(13, weight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          photo != null
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(photo, fit: BoxFit.contain),
+                )
+              : Container(
+                  height: 110,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('$label (sample)',
+                      style: inter(12, color: AppColors.hint)),
+                ),
+        ],
+      );
+
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('IC · $customer', style: inter(18, weight: FontWeight.w700)),
+      // Front above back, so each photo can be shown large enough to read.
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            side('Front', front),
+            const SizedBox(height: 12),
+            side('Back', back),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text('Close', style: inter(14, weight: FontWeight.w700)),
+        ),
+      ],
+    ),
+  );
+}
+
+/// One line of a [ChargesTable]: label on the left, amount on the right,
+/// optional small note under the amount (e.g. "paid", "auto-charged").
+class ChargeRow {
+  final String label;
+  final String amount;
+  final String? note;
+  const ChargeRow(this.label, this.amount, {this.note});
+}
+
+/// Rows of label + amount with a bold total underneath (O6, O6b, O6c).
+class ChargesTable extends StatelessWidget {
+  final List<ChargeRow> rows;
+  final String totalLabel;
+  final String total;
+
+  const ChargesTable({
+    super.key,
+    required this.rows,
+    required this.total,
+    this.totalLabel = 'Total',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget line(String label, String amount, String? note,
+        {bool bold = false}) {
+      final w = bold ? FontWeight.w700 : FontWeight.w400;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Text(label, style: inter(14, weight: w))),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(amount,
+                    style: inter(14, weight: bold ? w : FontWeight.w600)),
+                if (note != null)
+                  Text(note, style: inter(12, color: AppColors.text2)),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return OutlinedCard(
+      child: Column(
+        children: [
+          for (final r in rows) line(r.label, r.amount, r.note),
+          const Divider(color: AppColors.divider, thickness: 1.5, height: 16),
+          line(totalLabel, total, null, bold: true),
         ],
       ),
     );

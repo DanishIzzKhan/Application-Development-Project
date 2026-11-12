@@ -6,6 +6,7 @@ import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
 import 'o4_walk_in_booking.dart';
 import 'o5_start_rental.dart';
+import 'o6_end_rental.dart';
 
 /// O3 Rentals — the "Rentals" tab inside OwnerShell (bottom bar comes from the shell).
 class RentalsScreen extends StatefulWidget {
@@ -47,6 +48,34 @@ class _RentalsScreenState extends State<RentalsScreen> {
     if (rental == null || !mounted) return;
     setState(() => _rentals = [..._rentals, rental]);
     await _openStart(rental);
+  }
+
+  /// One tap the moment the vehicle physically arrives: saves the time,
+  /// stops further late charges, and lets the owner do O6 later.
+  void _markReturned(OwnerRental rental) {
+    // Later: Api.markReturned(rental.id) saves the time in the database.
+    final at = DateTime.now();
+    setState(() {
+      _rentals = [
+        for (final r in _rentals) r.id == rental.id ? r.markedReturned(at) : r,
+      ];
+    });
+    showTopNotice(context,
+        title: '${rental.vehicleName} back at ${formatClock(at)}',
+        lines: ['Tap End when you are ready to check it.'],
+        type: NoticeType.success);
+  }
+
+  /// Opens O6. If the owner ends the rental, O6 returns true and the
+  /// row is removed from "Active".
+  Future<void> _openEnd(OwnerRental rental) async {
+    final ended = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => EndRentalScreen(rental: rental)),
+    );
+    if (ended == true && mounted) {
+      setState(
+          () => _rentals = _rentals.where((r) => r.id != rental.id).toList());
+    }
   }
 
   void _comingSoon(String title) {
@@ -96,8 +125,8 @@ class _RentalsScreenState extends State<RentalsScreen> {
               onPressed: () => _comingSoon('Scan booking'), // O3b
               icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
               label: Text('Scan booking QR',
-                  style: inter(15,
-                      weight: FontWeight.w600, color: Colors.white)),
+                  style:
+                      inter(15, weight: FontWeight.w600, color: Colors.white)),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.dark,
                 shape: RoundedRectangleBorder(
@@ -113,8 +142,8 @@ class _RentalsScreenState extends State<RentalsScreen> {
             _RentalRow(
               title: r.title,
               subtitle: 'Pay at counter · ${r.totalLabel}',
-              button: SmallButton(
-                  label: 'Open', onPressed: () => _openStart(r)),
+              button:
+                  SmallButton(label: 'Open', onPressed: () => _openStart(r)),
               onTap: () => _openStart(r),
             ),
           if (waiting.isEmpty) const _EmptyRow(),
@@ -127,8 +156,8 @@ class _RentalsScreenState extends State<RentalsScreen> {
               title: r.title,
               subtitle:
                   '${r.paidOnline ? 'Paid online' : 'Paid at counter'} · ${r.durationLabel}',
-              button: SmallButton(
-                  label: 'Start', onPressed: () => _openStart(r)),
+              button:
+                  SmallButton(label: 'Start', onPressed: () => _openStart(r)),
               onTap: () => _openStart(r),
             ),
           if (ready.isEmpty) const _EmptyRow(),
@@ -140,15 +169,24 @@ class _RentalsScreenState extends State<RentalsScreen> {
             _RentalRow(
               title: r.title,
               subtitle: _activeLine(r, now),
-              badge: r.isWalkIn && r.minutesLate(now) > 0
-                  ? const RentalBadge('OVERDUE')
-                  : null,
-              button: SmallButton(
-                label: 'End',
-                primary: false,
-                onPressed: () => _comingSoon('End rental'), // O6
-              ),
-              onTap: () => _comingSoon('End rental'), // O6
+              badge: r.isReturned
+                  ? const RentalBadge('RETURNED', filled: false)
+                  : (r.isWalkIn && r.minutesLate(now) > 0
+                      ? const RentalBadge('OVERDUE')
+                      : null),
+              // Step 1: "Returned" the moment the vehicle arrives (saves the time).
+              // Step 2: "End" to check condition and charges on O6.
+              button: r.isReturned
+                  ? SmallButton(
+                      label: 'End',
+                      onPressed: () => _openEnd(r), // O6
+                    )
+                  : SmallButton(
+                      label: 'Returned',
+                      primary: false,
+                      onPressed: () => _markReturned(r),
+                    ),
+              onTap: () => _openEnd(r), // O6
             ),
           if (active.isEmpty) const _EmptyRow(),
         ],
@@ -158,6 +196,7 @@ class _RentalsScreenState extends State<RentalsScreen> {
 
   /// Second line of an active row, e.g. "+0:10 late · 1 block auto-charged".
   String _activeLine(OwnerRental r, DateTime now) {
+    if (r.isReturned) return _returnedLine(r);
     final late = r.minutesLate(now);
     if (late == 0) return 'Until ${formatClock(r.scheduledEnd)}';
     if (r.isWalkIn) {
@@ -166,6 +205,21 @@ class _RentalsScreenState extends State<RentalsScreen> {
     final blocks = r.lateBlocks(now);
     if (blocks == 0) return '${formatLate(late)} late · in grace period';
     return '${formatLate(late)} late · $blocks block${blocks == 1 ? '' : 's'} auto-charged';
+  }
+
+  /// Second line once "Returned" was tapped: the time is frozen there,
+  /// e.g. "Back 3:34 pm · on time" or "Back 3:40 pm · +0:10 late".
+  String _returnedLine(OwnerRental r) {
+    final at = r.returnedAt!;
+    final back = 'Back ${formatClock(at)}';
+    final late = r.minutesLate(at);
+    if (late == 0) return '$back · on time · tap End to check';
+    final blocks = r.lateBlocks(at);
+    if (blocks == 0) return '$back · ${formatLate(late)} late (grace)';
+    if (r.isWalkIn) {
+      return '$back · ${formatLate(late)} late · ${formatRM(r.lateCharge(at))} to collect';
+    }
+    return '$back · ${formatLate(late)} late · $blocks block${blocks == 1 ? '' : 's'} charged';
   }
 }
 
@@ -193,8 +247,8 @@ class _RentalRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: const BoxDecoration(
-          border: Border(
-              bottom: BorderSide(color: AppColors.divider, width: 1.5)),
+          border:
+              Border(bottom: BorderSide(color: AppColors.divider, width: 1.5)),
         ),
         child: Row(
           children: [

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'c1_login.dart';
 import 'o3_rentals.dart';
 import 'o9_vehicles.dart';
 
@@ -29,8 +31,7 @@ class _OwnerShellState extends State<OwnerShell> {
     RentalsScreen(), // O3 Rentals
     _PlaceholderTab(title: 'Live map'), // O7 Live map
     O9VehiclesScreen(), // O9 Vehicles
-
-    _PlaceholderTab(title: 'More'), // O15 More
+    _PlaceholderTab(title: 'More', showLogout: true), // O15 More
   ];
 
   @override
@@ -103,14 +104,64 @@ class _OwnerBottomNav extends StatelessWidget {
 /// Simple page for tabs that are not built yet.
 class _PlaceholderTab extends StatelessWidget {
   final String title;
-  const _PlaceholderTab({required this.title});
+
+  /// Temporary "Log out" button (on More) until O15/O16 are built.
+  final bool showLogout;
+
+  const _PlaceholderTab({required this.title, this.showLogout = false});
+
+  Future<void> _logout(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Log out?', style: inter(18, weight: FontWeight.w700)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancel', style: inter(14, color: AppColors.text2)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Log out', style: inter(14, weight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await Api.signOut();
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppHeader(title: title, showBack: false),
       body: Center(
-        child: Text('Coming soon', style: inter(15, color: AppColors.hint)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Coming soon', style: inter(15, color: AppColors.hint)),
+            if (showLogout) ...[
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () => _logout(context),
+                icon: const Icon(Icons.logout, color: AppColors.dark),
+                label: Text('Log out',
+                    style: inter(14,
+                        weight: FontWeight.w600, color: AppColors.dark)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppColors.dark, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
