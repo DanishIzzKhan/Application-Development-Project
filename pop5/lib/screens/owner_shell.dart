@@ -180,9 +180,6 @@ class _PlaceholderTab extends StatelessWidget {
     return Scaffold(
       appBar: AppHeader(title: title, showBack: false),
       body: Center(
-<<<<<<< HEAD
-        child: Text('Coming soon', style: inter(15, color: AppColors.hint)),
-=======
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -204,7 +201,6 @@ class _PlaceholderTab extends StatelessWidget {
             ],
           ],
         ),
->>>>>>> 3d57ee7487b25fa5a4d1d6f6fd0f48972ab01925
       ),
     );
   }
