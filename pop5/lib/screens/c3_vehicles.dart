@@ -12,6 +12,9 @@ import 'c5_book_vehicle.dart';
 import 'c9_active_rental.dart';
 import 'c9b_rental_ten_min_left.dart';
 import 'c9c_rental_overdue.dart';
+import 'c12_my_rentals.dart';
+import 'c13_notifications.dart';
+import 'c14_settings.dart';
 
 class VehiclesScreen extends StatefulWidget {
   const VehiclesScreen({super.key});
@@ -108,8 +111,20 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
     return '${d.inHours}:$m left';
   }
 
-  void _soon(String screen) =>
-      showToast(context, '$screen is not built yet.');
+  void _switchTab(int index) {
+    if (index == 0) return;
+    final Widget dest = switch (index) {
+      1 => const MyRentalsScreen(),
+      2 => const NotificationsScreen(),
+      _ => const SettingsScreen(),
+    };
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => dest,
+        transitionDuration: Duration.zero,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -172,8 +187,8 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                  color: AppColors.dark, width: 1.5),
+                              border:
+                                  Border.all(color: AppColors.dark, width: 1.5),
                             ),
                             child: Row(
                               children: [
@@ -202,7 +217,8 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                                 textAlign: TextAlign.center,
                                 style: inter(14, color: AppColors.text2)),
                             TextButton(
-                                onPressed: _load, child: const Text('Try again')),
+                                onPressed: _load,
+                                child: const Text('Try again')),
                           ],
                         ),
                       )
@@ -222,7 +238,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                 ),
               ),
             ),
-            _BottomNav(onSoon: _soon, unread: _unread),
+            _BottomNav(onSelect: _switchTab, unread: _unread),
           ],
         ),
       ),
@@ -256,8 +272,8 @@ class _VehicleCard extends StatelessWidget {
               : DashedBox(
                   width: 64,
                   height: 64,
-                  child: Text('PHOTO',
-                      style: inter(12, color: AppColors.text2)),
+                  child:
+                      Text('PHOTO', style: inter(12, color: AppColors.text2)),
                 ),
           const SizedBox(width: 12),
           Expanded(
@@ -287,7 +303,8 @@ class _VehicleCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8)),
               ),
               child: Text('Book',
-                  style: inter(14, weight: FontWeight.w600, color: Colors.white)),
+                  style:
+                      inter(14, weight: FontWeight.w600, color: Colors.white)),
             ),
           ),
         ],
@@ -297,9 +314,9 @@ class _VehicleCard extends StatelessWidget {
 }
 
 class _BottomNav extends StatelessWidget {
-  final void Function(String) onSoon;
+  final ValueChanged<int> onSelect;
   final int unread;
-  const _BottomNav({required this.onSoon, required this.unread});
+  const _BottomNav({required this.onSelect, required this.unread});
 
   @override
   Widget build(BuildContext context) {
@@ -311,14 +328,13 @@ class _BottomNav extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _item(Icons.pedal_bike, 'Rent', true, null),
+          _item(Icons.pedal_bike, 'Rent', true, () => onSelect(0)),
           _item(Icons.receipt_long_outlined, 'My rentals', false,
-              () => onSoon('My rentals (C12)')),
+              () => onSelect(1)),
           _item(Icons.notifications_none, 'Notifications', false,
-              () => onSoon('Notifications (C13)'),
+              () => onSelect(2),
               badge: unread),
-          _item(Icons.settings_outlined, 'Settings', false,
-              () => onSoon('Settings (C14)')),
+          _item(Icons.settings_outlined, 'Settings', false, () => onSelect(3)),
         ],
       ),
     );
