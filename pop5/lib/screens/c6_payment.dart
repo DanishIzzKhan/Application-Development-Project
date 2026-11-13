@@ -54,6 +54,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   /// Saves the booking (pending_payment), opens C7 to wait for payment and,
   /// once paid, C8 for the receipt. Pops with true so C5 and C3 refresh.
   Future<void> _confirm() async {
+    final route = ModalRoute.of(context);
     setState(() => _loading = true);
     try {
       final id = await Api.createBooking(
@@ -75,8 +76,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => ReceiptScreen(bookingId: id)),
         );
-        // C8 "Done" pops back to the first screen, so C6 may already be gone.
-        if (!mounted) return;
+        // C8 "Done" pops straight back to the first screen, which already closes
+        // this screen. Popping again here would remove the home screen too.
+        if (!mounted || route?.isActive != true) return;
       }
       Navigator.of(context).pop(true);
     } on PostgrestException catch (e) {
