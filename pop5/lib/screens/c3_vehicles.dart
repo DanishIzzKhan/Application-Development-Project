@@ -1,31 +1,38 @@
-import 'dart:async';
 
+import 'dart:async';
+ 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+ 
 import '../models/vehicle.dart';
 import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'c4_filter_panel.dart';
 import 'c5_book_vehicle.dart';
-
+import 'c9_active_rental.dart';
+import 'c9b_rental_ten_min_left.dart';
+import 'c9c_rental_overdue.dart';
+import 'c12_my_rentals.dart';
+import 'c13_notifications.dart';
+import 'c14_settings.dart';
+ 
 class VehiclesScreen extends StatefulWidget {
   const VehiclesScreen({super.key});
-
+ 
   @override
   State<VehiclesScreen> createState() => _VehiclesScreenState();
 }
-
+ 
 class _VehiclesScreenState extends State<VehiclesScreen> {
   VehicleFilter _filter = const VehicleFilter();
   List<Vehicle> _vehicles = [];
-  ({String vehicle, DateTime end})? _active;
+  ({String id, String vehicle, DateTime end})? _active;
   int _unread = 0;
   bool _loading = true;
   String? _error;
   Timer? _ticker;
-
+ 
   @override
   void initState() {
     super.initState();
@@ -35,13 +42,13 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       if (mounted && _active != null) setState(() {});
     });
   }
-
+ 
   @override
   void dispose() {
     _ticker?.cancel();
     super.dispose();
   }
-
+ 
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -56,7 +63,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       if (!mounted) return;
       setState(() {
         _vehicles = results[0] as List<Vehicle>;
-        _active = results[1] as ({String vehicle, DateTime end})?;
+        _active = results[1] as ({String id, String vehicle, DateTime end})?;
         _unread = results[2] as int;
       });
     } on PostgrestException catch (e) {
@@ -67,35 +74,63 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       if (mounted) setState(() => _loading = false);
     }
   }
-
+ 
   Future<void> _openFilter() async {
     final result = await showFilterPanel(context, _filter);
     if (result == null) return;
     _filter = result;
     _load();
   }
-
+ 
   Future<void> _book(Vehicle v) async {
-    final booked = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => BookVehicleScreen(vehicle: v)),
     );
-    if (booked == true) _load();
+    // C8 "Done" jumps straight back here, so always refresh on return.
+    if (mounted) _load();
   }
-
+ 
+  /// Banner tap: more than 10 min left -> C9, 10 min or less -> C9b,
+  /// past the end time -> C9c.
+  Future<void> _openActive() async {
+    final a = _active;
+    if (a == null) return;
+    final left = a.end.difference(DateTime.now());
+    final Widget screen = left.isNegative
+        ? RentalOverdueScreen(bookingId: a.id)
+        : left <= const Duration(minutes: 10)
+            ? RentalTenMinLeftScreen(bookingId: a.id)
+            : ActiveRentalScreen(bookingId: a.id);
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    if (mounted) _load();
+  }
+ 
   String _remaining(DateTime end) {
     final d = end.difference(DateTime.now());
     if (d.isNegative) return 'Overdue';
     final m = (d.inMinutes % 60).toString().padLeft(2, '0');
     return '${d.inHours}:$m left';
   }
-
-  void _soon(String screen) =>
-      showToast(context, '$screen is not built yet.');
-
+ 
+  /// Bottom bar: 1 = My rentals (C12), 2 = Notifications (C13), 3 = Settings (C14).
+  void _openTab(int index) {
+    final Widget dest = switch (index) {
+      1 => const MyRentalsScreen(),
+      2 => const NotificationsScreen(),
+      _ => const SettingsScreen(),
+    };
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => dest,
+        transitionDuration: Duration.zero,
+      ),
+    );
+  }
+ 
   @override
   Widget build(BuildContext context) {
     final availableCount = _vehicles.where((v) => v.isAvailable).length;
-
+ 
     return Scaffold(
       appBar: const AppHeader(title: 'Rent a vehicle', showBack: false),
       body: SafeArea(
@@ -110,7 +145,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                   children: [
                     if (_active != null) ...[
                       GestureDetector(
-                        onTap: () => _soon('Active rental (C9)'),
+                        onTap: _openActive,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 10),
@@ -203,19 +238,19 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                 ),
               ),
             ),
-            _BottomNav(onSoon: _soon, unread: _unread),
+            _BottomNav(onSelect: _openTab, unread: _unread),
           ],
         ),
       ),
     );
   }
 }
-
+ 
 class _VehicleCard extends StatelessWidget {
   final Vehicle vehicle;
   final VoidCallback onBook;
   const _VehicleCard({required this.vehicle, required this.onBook});
-
+ 
   @override
   Widget build(BuildContext context) {
     final v = vehicle;
@@ -276,12 +311,12 @@ class _VehicleCard extends StatelessWidget {
     );
   }
 }
-
+ 
 class _BottomNav extends StatelessWidget {
-  final void Function(String) onSoon;
+  final ValueChanged<int> onSelect;
   final int unread;
-  const _BottomNav({required this.onSoon, required this.unread});
-
+  const _BottomNav({required this.onSelect, required this.unread});
+ 
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -294,17 +329,17 @@ class _BottomNav extends StatelessWidget {
         children: [
           _item(Icons.pedal_bike, 'Rent', true, null),
           _item(Icons.receipt_long_outlined, 'My rentals', false,
-              () => onSoon('My rentals (C12)')),
+              () => onSelect(1)),
           _item(Icons.notifications_none, 'Notifications', false,
-              () => onSoon('Notifications (C13)'),
+              () => onSelect(2),
               badge: unread),
           _item(Icons.settings_outlined, 'Settings', false,
-              () => onSoon('Settings (C14)')),
+              () => onSelect(3)),
         ],
       ),
     );
   }
-
+ 
   Widget _item(IconData icon, String label, bool current, VoidCallback? onTap,
       {int badge = 0}) {
     final color = current ? AppColors.ink : AppColors.hint;

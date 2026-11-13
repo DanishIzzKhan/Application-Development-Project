@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'c11_report_problem.dart';
 
 class RentalOverdueScreen extends StatefulWidget {
   final String bookingId;
@@ -88,6 +89,11 @@ class _RentalOverdueScreenState extends State<RentalOverdueScreen> {
     }
   }
 
+  void _openReport() {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ReportProblemScreen(bookingId: widget.bookingId)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final vehicleName = _rentalData?['vehicles']?['name'] ?? 'Vehicle';
@@ -154,7 +160,7 @@ class _RentalOverdueScreenState extends State<RentalOverdueScreen> {
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
-                          onPressed: () => showToast(context, 'Navigate to Report a Problem (C11)'),
+                          onPressed: _openReport,
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size(double.infinity, 48),
                             side: const BorderSide(color: AppColors.border, width: 1.5),

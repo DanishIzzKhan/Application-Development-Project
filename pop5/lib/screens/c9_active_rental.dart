@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'c10_extend_rental.dart';
+import 'c11_report_problem.dart';
 
 class ActiveRentalScreen extends StatefulWidget {
   final String bookingId;
@@ -41,8 +43,8 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
     });
     try {
       final response = await Supabase.instance.client
-          .from('bookings')
-          .select('*, vehicles(*)')
+          .from('rentals')
+          .select('*, vehicles(id, type, rate_per_block)')
           .eq('id', widget.bookingId)
           .single();
       if (mounted) {
@@ -95,10 +97,9 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
     setState(() => _loading = true);
     try {
       await Supabase.instance.client
-          .from('bookings')
-          .update({'status': 'completed'})
-          .eq('id', widget.bookingId);
-      
+          .from('rentals')
+          .update({'status': 'completed'}).eq('id', widget.bookingId);
+
       if (!mounted) return;
       showToast(context, 'Vehicle returned successfully!');
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -110,6 +111,19 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
     }
   }
 
+  Future<void> _openExtend() async {
+    final extended = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+          builder: (_) => ExtendRentalScreen(bookingId: widget.bookingId)),
+    );
+    if (extended == true && mounted) _fetchActiveRental();
+  }
+
+  void _openReport() {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ReportProblemScreen(bookingId: widget.bookingId)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final vehicleName = _rentalData?['vehicles']?['name'] ?? 'Vehicle';
@@ -119,7 +133,8 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
       appBar: const AppHeader(title: 'Active Rental (C9)'),
       body: SafeArea(
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.dark))
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.dark))
             : _error != null
                 ? Center(
                     child: Padding(
@@ -150,19 +165,25 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
                           decoration: BoxDecoration(
                             color: AppColors.surface,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppColors.divider, width: 1.5),
+                            border: Border.all(
+                                color: AppColors.divider, width: 1.5),
                           ),
                           child: Column(
                             children: [
-                              const Icon(Icons.pedal_bike, size: 56, color: AppColors.dark),
+                              const Icon(Icons.pedal_bike,
+                                  size: 56, color: AppColors.dark),
                               const SizedBox(height: 16),
-                              Text('Rental in Progress', style: inter(18, weight: FontWeight.w700)),
+                              Text('Rental in Progress',
+                                  style: inter(18, weight: FontWeight.w700)),
                               const SizedBox(height: 8),
-                              Text('$vehicleName ($vehicleType)', style: inter(14, color: AppColors.text2)),
+                              Text('$vehicleName ($vehicleType)',
+                                  style: inter(14, color: AppColors.text2)),
                               const SizedBox(height: 24),
-                              Text(_formatDuration(_remainingTime), style: inter(36, weight: FontWeight.w700)),
+                              Text(_formatDuration(_remainingTime),
+                                  style: inter(36, weight: FontWeight.w700)),
                               const SizedBox(height: 4),
-                              Text('Time remaining', style: inter(12, color: AppColors.text2)),
+                              Text('Time remaining',
+                                  style: inter(12, color: AppColors.text2)),
                             ],
                           ),
                         ),
@@ -173,23 +194,33 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
-                          onPressed: () => showToast(context, 'Navigate to Extend Rental (C10)'),
+                          onPressed: _openExtend,
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size(double.infinity, 48),
-                            side: const BorderSide(color: AppColors.border, width: 1.5),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            side: const BorderSide(
+                                color: AppColors.border, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
                           ),
-                          child: Text('Extend Rental (C10)', style: inter(14, weight: FontWeight.w600, color: AppColors.ink)),
+                          child: Text('Extend Rental (C10)',
+                              style: inter(14,
+                                  weight: FontWeight.w600,
+                                  color: AppColors.ink)),
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton(
-                          onPressed: () => showToast(context, 'Navigate to Report a Problem (C11)'),
+                          onPressed: _openReport,
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size(double.infinity, 48),
-                            side: const BorderSide(color: AppColors.border, width: 1.5),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            side: const BorderSide(
+                                color: AppColors.border, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
                           ),
-                          child: Text('Report a Problem (C11)', style: inter(14, weight: FontWeight.w600, color: AppColors.ink)),
+                          child: Text('Report a Problem (C11)',
+                              style: inter(14,
+                                  weight: FontWeight.w600,
+                                  color: AppColors.ink)),
                         ),
                         const SizedBox(height: 16),
                       ],

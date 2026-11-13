@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/rental.dart';
 import '../theme.dart';
-import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
+import 'o3b_scan_booking.dart';
 import 'o4_walk_in_booking.dart';
 import 'o5_start_rental.dart';
 import 'o6_end_rental.dart';
@@ -78,10 +78,14 @@ class _RentalsScreenState extends State<RentalsScreen> {
     }
   }
 
-  void _comingSoon(String title) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => _ComingSoonScreen(title: title)),
+  /// Opens O3b. When a booking is scanned (or its code typed), O3b returns
+  /// it and Start rental (O5) opens for it.
+  Future<void> _openScan() async {
+    final rental = await Navigator.of(context).push<OwnerRental>(
+      MaterialPageRoute(builder: (_) => ScanBookingScreen(rentals: _rentals)),
     );
+    if (rental == null || !mounted) return;
+    await _openStart(rental);
   }
 
   @override
@@ -122,7 +126,7 @@ class _RentalsScreenState extends State<RentalsScreen> {
           SizedBox(
             height: 48,
             child: FilledButton.icon(
-              onPressed: () => _comingSoon('Scan booking'), // O3b
+              onPressed: _openScan, // O3b
               icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
               label: Text('Scan booking QR',
                   style:
@@ -279,22 +283,6 @@ class _EmptyRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Text('None right now', style: inter(13, color: AppColors.hint)),
-    );
-  }
-}
-
-/// Temporary page for screens that are not built yet (O3b, O4, O6).
-class _ComingSoonScreen extends StatelessWidget {
-  final String title;
-  const _ComingSoonScreen({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppHeader(title: title),
-      body: Center(
-        child: Text('Coming soon', style: inter(15, color: AppColors.hint)),
-      ),
     );
   }
 }

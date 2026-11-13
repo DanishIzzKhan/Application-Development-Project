@@ -3,53 +3,57 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-
+ 
 class WaitingPaymentScreen extends StatefulWidget {
   final String bookingId;
   const WaitingPaymentScreen({super.key, required this.bookingId});
-
+ 
   @override
   State<WaitingPaymentScreen> createState() => _WaitingPaymentScreenState();
 }
-
+ 
 class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
   bool _isChecking = true;
   bool _isFailed = false;
   String _statusMessage =
       'Please complete the payment on your gateway app. We are waiting for confirmation...';
   Timer? _pollTimer;
-
+ 
   @override
   void initState() {
     super.initState();
     _startPaymentPolling();
   }
-
+ 
   @override
   void dispose() {
     _pollTimer?.cancel();
     super.dispose();
   }
-
+ 
   void _startPaymentPolling() {
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         final response = await Supabase.instance.client
-            .from('bookings')
+            .from('rentals')
             .select('status')
             .eq('id', widget.bookingId)
             .single();
-
+ 
         final status = response['status'] as String?;
         if (!mounted) return;
-
-        if (status == 'paid' || status == 'confirmed') {
+ 
+        // 'ready' = paid, waiting for handover; later statuses also mean paid.
+        if (status == 'ready' ||
+            status == 'checked_in' ||
+            status == 'active' ||
+            status == 'completed') {
           timer.cancel();
           setState(() {
             _isChecking = false;
             _isFailed = false;
           });
-        } else if (status == 'failed' || status == 'cancelled') {
+        } else if (status == 'cancelled' || status == 'expired') {
           timer.cancel();
           setState(() {
             _isChecking = false;
@@ -63,7 +67,7 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
       }
     });
   }
-
+ 
   Future<void> _retryPayment() async {
     setState(() {
       _isChecking = true;
@@ -72,16 +76,16 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
     });
     _startPaymentPolling();
   }
-
+ 
   Future<void> _cancelBooking() async {
     try {
       await Supabase.instance.client
-          .from('bookings')
+          .from('rentals')
           .update({'status': 'cancelled'}).eq('id', widget.bookingId);
     } catch (_) {}
     if (mounted) Navigator.of(context).pop(false);
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
