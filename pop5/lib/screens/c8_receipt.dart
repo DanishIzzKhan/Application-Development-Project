@@ -141,11 +141,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                                 children: [
                                   Text('Vehicle',
                                       style: inter(14, color: AppColors.text2)),
-                                  Text(
-                                      _receiptData?['vehicles']?['name'] ??
-                                          'Vehicle',
-                                      style:
-                                          inter(14, weight: FontWeight.w600)),
+                                  Text(vehicleName,
+                                      style: inter(14, weight: FontWeight.w600)),
                                 ],
                               ),
                               const SizedBox(height: 12),
@@ -155,10 +152,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                                 children: [
                                   Text('Duration',
                                       style: inter(14, color: AppColors.text2)),
-                                  Text(
-                                      '${_receiptData?['duration_minutes'] ?? 60} mins',
-                                      style:
-                                          inter(14, weight: FontWeight.w600)),
+                                  Text('$durationMins mins',
+                                      style: inter(14, weight: FontWeight.w600)),
                                 ],
                               ),
                               if (startTime != null) ...[
@@ -198,10 +193,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                                 children: [
                                   Text('Total Paid',
                                       style: inter(14, color: AppColors.text2)),
-                                  Text(
-                                      'RM ${(_receiptData?['total_amount'] ?? 0.0).toStringAsFixed(2)}',
-                                      style:
-                                          inter(16, weight: FontWeight.w700)),
+                                  Text('RM ${totalPaid.toStringAsFixed(2)}',
+                                      style: inter(16, weight: FontWeight.w700)),
                                 ],
                               ),
                             ],
