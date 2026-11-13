@@ -10,6 +10,11 @@ import 'c8_receipt.dart';
 
 enum PayMethod { touchNGo, duitNow, counter }
 
+/// TESTING ONLY: true = skip C7 (waiting for payment) and go straight to the
+/// receipt (C8) as if the payment succeeded. Set to false once real payment
+/// confirmation is connected.
+const bool kSkipPaymentWait = true;
+
 /// C6 Payment (Touch 'n Go / DuitNow selected) and
 /// C6b Payment - pay at counter (counter selected): one screen, two states.
 class PaymentScreen extends StatefulWidget {
@@ -58,9 +63,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
       if (!mounted) return;
 
-      final paid = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => WaitingPaymentScreen(bookingId: id)),
-      );
+      final paid = kSkipPaymentWait
+          ? true
+          : await Navigator.of(context).push<bool>(
+              MaterialPageRoute(
+                  builder: (_) => WaitingPaymentScreen(bookingId: id)),
+            );
       if (!mounted) return;
 
       if (paid == true) {
