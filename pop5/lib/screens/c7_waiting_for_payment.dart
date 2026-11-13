@@ -35,7 +35,7 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         final response = await Supabase.instance.client
-            .from('bookings')
+            .from('rentals')
             .select('status')
             .eq('id', widget.bookingId)
             .single();
@@ -43,7 +43,7 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
         final status = response['status'] as String?;
         if (!mounted) return;
 
-        if (status == 'paid' || status == 'confirmed') {
+        if (status == 'paid' || status == 'confirmed' || status == 'ready') {
           timer.cancel();
           setState(() {
             _isChecking = false;
@@ -76,7 +76,7 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
   Future<void> _cancelBooking() async {
     try {
       await Supabase.instance.client
-          .from('bookings')
+          .from('rentals')
           .update({'status': 'cancelled'}).eq('id', widget.bookingId);
     } catch (_) {}
     if (mounted) Navigator.of(context).pop(false);
