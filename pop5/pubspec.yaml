@@ -12,6 +12,7 @@ dependencies:
   supabase_flutter: ^2.8.0
   google_fonts: ^6.2.1
   image_picker: ^1.1.2
+  mobile_scanner: ^7.5.0
 
 dev_dependencies:
   flutter_test:
