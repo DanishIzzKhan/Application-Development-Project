@@ -24,8 +24,8 @@ class MyRentalsScreen extends StatefulWidget {
 class _MyRentalsScreenState extends State<MyRentalsScreen> {
   bool _loading = true;
   String? _error;
-  List _current = [];
-  List _past = [];
+  List<Map<String, dynamic>> _current = [];
+  List<Map<String, dynamic>> _past = [];
   int _unread = 0;
   Timer? _ticker;
 
@@ -54,21 +54,21 @@ class _MyRentalsScreenState extends State<MyRentalsScreen> {
       if (userId == null) throw Exception('Not logged in');
 
       final rows = await Supabase.instance.client
-          .from('bookings')
+          .from('rentals')
           .select('*, vehicles(*)')
           .eq('customer_id', userId)
-          .order('created_at', ascending: false);
+          .order('scheduled_start_time', ascending: false);
       final unread = await Api.fetchUnreadCount();
-      final currentList = [];
-      final pastList = [];
+      final currentList = <Map<String, dynamic>>[];
+      final pastList = <Map<String, dynamic>>[];
 
       for (final r in rows) {
-        final item = Map.from(r);
+        final item = Map<String, dynamic>.from(r);
         final status = (item['status'] ?? '').toString();
-        if (status == 'active' ||
-            status == 'paid' ||
-            status == 'confirmed' ||
-            status == 'pending_payment') {
+        if (status == 'pending_payment' ||
+            status == 'ready' ||
+            status == 'checked_in' ||
+            status == 'active') {
           currentList.add(item);
         } else if (status == 'completed') {
           pastList.add(item);
@@ -88,6 +88,12 @@ class _MyRentalsScreenState extends State<MyRentalsScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// vehicles has no name column: show e.g. "Bicycle BK-01".
+  String _vehicleName(Map<String, dynamic> b) {
+    final v = b['vehicles'];
+    return v == null ? 'Vehicle' : '${v['type']} ${v['id']}';
   }
 
   String _remainingLabel(String? endIso) {
@@ -145,7 +151,13 @@ class _MyRentalsScreenState extends State<MyRentalsScreen> {
       return;
     }
 
-    final end = DateTime.tryParse(booking['end_time'] ?? '');
+    if (status == 'ready') {
+      // Paid, waiting for the owner to hand over the vehicle.
+      _openReceipt(id);
+      return;
+    }
+
+    final end = DateTime.tryParse('${booking['scheduled_end_time'] ?? ''}');
     final left = end?.difference(DateTime.now()) ?? const Duration(minutes: 30);
     final Widget screen = left.isNegative
         ? RentalOverdueScreen(bookingId: id)
@@ -224,21 +236,28 @@ class _MyRentalsScreenState extends State<MyRentalsScreen> {
                       else
                         _groupedCard(
                           children: _current.map((b) {
-                            final vehicleName =
-                                b['vehicles']?['name'] ?? 'Vehicle';
+                            final vehicleName = _vehicleName(b);
                             final isPending = b['status'] == 'pending_payment';
+                            final isReady = b['status'] == 'ready';
                             final subtitle = isPending
                                 ? 'Waiting for payment · pay at counter'
-                                : _remainingLabel(b['end_time']?.toString());
+                                : isReady
+                                    ? 'Paid · ready for handover'
+                                    : _remainingLabel(
+                                        b['scheduled_end_time']?.toString());
 
                             return _rentalRow(
-                              icon: isPending
+                              icon: isPending || isReady
                                   ? Icons.receipt_long_outlined
                                   : Icons.timer_outlined,
                               title: vehicleName,
                               subtitle: subtitle,
-                              buttonLabel: isPending ? 'View' : 'Open',
-                              filled: !isPending,
+                              buttonLabel: isPending
+                                  ? 'View'
+                                  : isReady
+                                      ? 'Receipt'
+                                      : 'Open',
+                              filled: !(isPending || isReady),
                               onPressed: () => _openCurrent(b),
                             );
                           }).toList(),
@@ -252,11 +271,10 @@ class _MyRentalsScreenState extends State<MyRentalsScreen> {
                       else
                         _groupedCard(
                           children: _past.map((b) {
-                            final vehicleName =
-                                b['vehicles']?['name'] ?? 'Vehicle';
+                            final vehicleName = _vehicleName(b);
                             final dateStr =
-                                _dateOnly(b['start_time']?.toString());
-                            final mins = (b['duration_minutes'] ?? 20) as int;
+                                _dateOnly(b['scheduled_start_time']?.toString());
+                            final mins = ((b['blocks_booked'] ?? 1) as num).toInt() * 20;
                             final total = ((b['total_amount'] ?? 0.0) as num)
                                 .toStringAsFixed(2);
 

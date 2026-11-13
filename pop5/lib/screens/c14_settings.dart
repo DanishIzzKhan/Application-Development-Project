@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+ 
 import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -9,14 +9,14 @@ import 'c1e_reset_password.dart';
 import 'c3_vehicles.dart';
 import 'c12_my_rentals.dart';
 import 'c13_notifications.dart';
-
+ 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
-
+ 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
-
+ 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   String _username = '';
@@ -24,31 +24,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _email = '';
   String _phone = '';
   bool _icVerified = true;
-
+ 
   bool _rentalReminders = true;
   bool _paymentUpdates = true;
   bool _promotions = false;
   int _unread = 0;
-
+ 
   @override
   void initState() {
     super.initState();
     _load();
   }
-
+ 
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
       final client = Supabase.instance.client;
       final user = client.auth.currentUser;
       if (user == null) return;
-
+ 
       final results = await Future.wait<dynamic>([
-        client.from('profiles').select().eq('id', user.id).maybeSingle(),
+        client.from('users').select().eq('id', user.id).maybeSingle(),
         Api.fetchUnreadCount(),
       ]);
       final profile = results[0] as Map<String, dynamic>?;
-      if (!mounted) return;
       if (!mounted) return;
       setState(() {
         _email = user.email ?? '';
@@ -60,7 +59,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 .toString();
         _phone =
             (profile?['phone'] ?? user.userMetadata?['phone'] ?? '').toString();
-        _icVerified = (profile?['ic_verified'] ?? true) == true;
+        _icVerified = profile?['ic_front_path'] != null &&
+            profile?['ic_back_path'] != null;
         _rentalReminders = (profile?['notify_reminders'] ?? true) == true;
         _paymentUpdates = (profile?['notify_payments'] ?? true) == true;
         _promotions = (profile?['notify_promotions'] ?? false) == true;
@@ -81,22 +81,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) setState(() => _loading = false);
     }
   }
-
+ 
   Future<void> _updatePref(String column, bool value) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
     try {
       await Supabase.instance.client
-          .from('profiles')
+          .from('users')
           .update({column: value}).eq('id', userId);
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) showToast(context, 'Could not save setting: $e');
+    }
   }
-
+ 
   Future<void> _editProfile() async {
     final nameCtrl = TextEditingController(text: _fullName);
     final userCtrl = TextEditingController(text: _username);
     final phoneCtrl = TextEditingController(text: _phone);
-
+ 
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -142,12 +144,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 final userId = Supabase.instance.client.auth.currentUser?.id;
                 if (userId == null) return;
                 try {
-                  await Supabase.instance.client.from('profiles').update({
+                  await Supabase.instance.client.from('users').update({
                     'username': userCtrl.text.trim(),
                     'full_name': nameCtrl.text.trim(),
                     'phone': Api.normalizePhone(phoneCtrl.text),
                   }).eq('id', userId);
                   if (ctx.mounted) Navigator.pop(ctx, true);
+                } on PostgrestException catch (e) {
+                  if (ctx.mounted) {
+                    showToast(
+                        ctx,
+                        e.code == '23505'
+                            ? 'That username or phone number is already taken.'
+                            : 'Could not update profile: ${e.message}');
+                  }
                 } catch (e) {
                   if (ctx.mounted) {
                     showToast(ctx, 'Could not update profile: $e');
@@ -159,17 +169,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
-
+ 
     nameCtrl.dispose();
     userCtrl.dispose();
     phoneCtrl.dispose();
-
+ 
     if (saved == true && mounted) {
       showToast(context, 'Profile updated.');
       _load();
     }
   }
-
+ 
   void _showTerms() {
     showModalBottomSheet<void>(
       context: context,
@@ -206,7 +216,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
+ 
   Future<void> _logout() async {
     await Supabase.instance.client.auth.signOut();
     if (!mounted) return;
@@ -215,7 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       (_) => false,
     );
   }
-
+ 
   void _switchTab(int index) {
     if (index == 3) return;
     final Widget dest = switch (index) {
@@ -230,14 +240,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     final subtitleParts = [
       if (_fullName.isNotEmpty) _fullName,
       if (_phone.isNotEmpty) _phone,
     ];
-
+ 
     return Scaffold(
       appBar: const AppHeader(title: 'Settings', showBack: false),
       body: SafeArea(
@@ -299,8 +309,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         const SizedBox(width: 4),
                                         Text(
                                           _icVerified
-                                              ? 'IC verified'
-                                              : 'IC pending verification',
+                                              ? 'IC on file'
+                                              : 'IC not uploaded',
                                           style: inter(12,
                                               weight: FontWeight.w600),
                                         ),
@@ -313,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-
+ 
                         // Account section
                         Text('Account',
                             style: inter(14, weight: FontWeight.w600)),
@@ -322,9 +332,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           _navTile(
                             icon: Icons.person_outline,
                             title: 'Edit profile',
-                            subtitle: _email.isNotEmpty
-                                ? 'Username, name, email, phone'
-                                : 'Username, name, phone',
+                            subtitle: 'Username, name, phone',
                             onTap: _editProfile,
                           ),
                           _navTile(
@@ -337,7 +345,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ]),
                         const SizedBox(height: 20),
-
+ 
                         // Notifications section
                         Text('Notifications',
                             style: inter(14, weight: FontWeight.w600)),
@@ -369,7 +377,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ]),
                         const SizedBox(height: 20),
-
+ 
                         // Terms & Log out section
                         _groupedCard([
                           _navTile(
@@ -396,7 +404,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
+ 
   Widget _groupedCard(List<Widget> children) {
     return Container(
       decoration: BoxDecoration(
@@ -415,7 +423,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
+ 
   Widget _navTile({
     required IconData icon,
     required String title,
@@ -450,7 +458,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
+ 
   Widget _switchTile({
     required String label,
     required bool value,
@@ -476,16 +484,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-
+ 
 class _SettingsBottomNav extends StatelessWidget {
   final int unread;
   final ValueChanged<int> onSelect;
-
+ 
   const _SettingsBottomNav({
     required this.unread,
     required this.onSelect,
   });
-
+ 
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -504,7 +512,7 @@ class _SettingsBottomNav extends StatelessWidget {
       ),
     );
   }
-
+ 
   Widget _item(IconData icon, String label, int index, {int badge = 0}) {
     final current = index == 3;
     final color = current ? AppColors.ink : AppColors.hint;

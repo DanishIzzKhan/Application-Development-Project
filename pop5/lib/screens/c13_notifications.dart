@@ -19,7 +19,7 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _loading = true;
   String? _error;
-  List _items = [];
+  List<Map<String, dynamic>> _items = [];
 
   @override
   void initState() {
@@ -45,7 +45,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!mounted) return;
       setState(() {
         _items = [
-          for (final e in res) Map.from(e),
+          for (final e in res) Map<String, dynamic>.from(e),
         ];
       });
     } on PostgrestException catch (e) {
@@ -61,16 +61,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
     try {
+      final now = DateTime.now().toUtc().toIso8601String();
       await Supabase.instance.client
           .from('notifications')
-          .update({'is_read': true})
+          .update({'read_at': now})
           .eq('user_id', userId)
-          .eq('is_read', false);
+          .isFilter('read_at', null);
 
       if (!mounted) return;
       setState(() {
         for (final n in _items) {
-          n['is_read'] = true;
+          n['read_at'] ??= now;
         }
       });
       showToast(context, 'All notifications marked as read.');
@@ -81,27 +82,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _onTapItem(Map<String, dynamic> item) async {
     final id = item['id'];
-    if (item['is_read'] != true && id != null) {
-      setState(() => item['is_read'] = true);
+    if (item['read_at'] == null && id != null) {
+      final now = DateTime.now().toUtc().toIso8601String();
+      setState(() => item['read_at'] = now);
       try {
         await Supabase.instance.client
             .from('notifications')
-            .update({'is_read': true}).eq('id', id);
+            .update({'read_at': now}).eq('id', id);
       } catch (_) {}
     }
 
     final type = (item['type'] ?? '').toString();
-    final bookingId = item['booking_id']?.toString();
-    if (!mounted || bookingId == null || bookingId.isEmpty) return;
+    final rentalId = item['rental_id']?.toString();
+    if (!mounted || rentalId == null || rentalId.isEmpty) return;
 
-    if (type == 'receipt' || type == 'payment') {
+    if (type == 'receipt' || type == 'payment' || type == 'late_charge') {
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ReceiptScreen(bookingId: bookingId)),
+        MaterialPageRoute(builder: (_) => ReceiptScreen(bookingId: rentalId)),
       );
-    } else if (type == 'rental_reminder' || type == 'geofence') {
+    } else {
+      // overdue, boundary_warning, out_of_park, lost_signal, reminders
       Navigator.of(context).push(
         MaterialPageRoute(
-            builder: (_) => ActiveRentalScreen(bookingId: bookingId)),
+            builder: (_) => ActiveRentalScreen(bookingId: rentalId)),
       );
     }
   }
@@ -115,10 +118,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
     if (type.contains('reminder') ||
         type.contains('timer') ||
+        type.contains('overdue') ||
+        type.contains('late') ||
         title.contains('minutes')) {
       return Icons.timer_outlined;
     }
     if (type.contains('boundary') ||
+        type.contains('out_of_park') ||
+        type.contains('lost_signal') ||
         type.contains('geofence') ||
         title.contains('boundary')) {
       return Icons.location_on_outlined;
@@ -127,7 +134,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return Icons.receipt_long_outlined;
     }
     if (type.contains('identity') ||
-        type.contains('ic') ||
+        type == 'ic' ||
+        type.startsWith('ic_') ||
         title.contains('verified')) {
       return Icons.shield_outlined;
     }
@@ -178,7 +186,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final unreadCount =
-        _items.where((n) => (n['is_read'] ?? false) == false).length;
+        _items.where((n) => n['read_at'] == null).length;
 
     return Scaffold(
       appBar: PreferredSize(
@@ -258,7 +266,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 ),
                                 itemBuilder: (_, i) {
                                   final item = _items[i];
-                                  final unread = item['is_read'] != true;
+                                  final unread = item['read_at'] == null;
                                   return InkWell(
                                     onTap: () => _onTapItem(item),
                                     child: Container(

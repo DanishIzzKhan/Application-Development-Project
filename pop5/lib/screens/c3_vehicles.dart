@@ -1,8 +1,9 @@
-import 'dart:async';
 
+import 'dart:async';
+ 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+ 
 import '../models/vehicle.dart';
 import '../services/api.dart';
 import '../theme.dart';
@@ -15,14 +16,14 @@ import 'c9c_rental_overdue.dart';
 import 'c12_my_rentals.dart';
 import 'c13_notifications.dart';
 import 'c14_settings.dart';
-
+ 
 class VehiclesScreen extends StatefulWidget {
   const VehiclesScreen({super.key});
-
+ 
   @override
   State<VehiclesScreen> createState() => _VehiclesScreenState();
 }
-
+ 
 class _VehiclesScreenState extends State<VehiclesScreen> {
   VehicleFilter _filter = const VehicleFilter();
   List<Vehicle> _vehicles = [];
@@ -31,7 +32,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   bool _loading = true;
   String? _error;
   Timer? _ticker;
-
+ 
   @override
   void initState() {
     super.initState();
@@ -41,13 +42,13 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       if (mounted && _active != null) setState(() {});
     });
   }
-
+ 
   @override
   void dispose() {
     _ticker?.cancel();
     super.dispose();
   }
-
+ 
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -73,14 +74,14 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       if (mounted) setState(() => _loading = false);
     }
   }
-
+ 
   Future<void> _openFilter() async {
     final result = await showFilterPanel(context, _filter);
     if (result == null) return;
     _filter = result;
     _load();
   }
-
+ 
   Future<void> _book(Vehicle v) async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => BookVehicleScreen(vehicle: v)),
@@ -88,7 +89,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
     // C8 "Done" jumps straight back here, so always refresh on return.
     if (mounted) _load();
   }
-
+ 
   /// Banner tap: more than 10 min left -> C9, 10 min or less -> C9b,
   /// past the end time -> C9c.
   Future<void> _openActive() async {
@@ -103,16 +104,16 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
     if (mounted) _load();
   }
-
+ 
   String _remaining(DateTime end) {
     final d = end.difference(DateTime.now());
     if (d.isNegative) return 'Overdue';
     final m = (d.inMinutes % 60).toString().padLeft(2, '0');
     return '${d.inHours}:$m left';
   }
-
-  void _switchTab(int index) {
-    if (index == 0) return;
+ 
+  /// Bottom bar: 1 = My rentals (C12), 2 = Notifications (C13), 3 = Settings (C14).
+  void _openTab(int index) {
     final Widget dest = switch (index) {
       1 => const MyRentalsScreen(),
       2 => const NotificationsScreen(),
@@ -125,11 +126,11 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
       ),
     );
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     final availableCount = _vehicles.where((v) => v.isAvailable).length;
-
+ 
     return Scaffold(
       appBar: const AppHeader(title: 'Rent a vehicle', showBack: false),
       body: SafeArea(
@@ -187,8 +188,8 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(8),
-                              border:
-                                  Border.all(color: AppColors.dark, width: 1.5),
+                              border: Border.all(
+                                  color: AppColors.dark, width: 1.5),
                             ),
                             child: Row(
                               children: [
@@ -217,8 +218,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                                 textAlign: TextAlign.center,
                                 style: inter(14, color: AppColors.text2)),
                             TextButton(
-                                onPressed: _load,
-                                child: const Text('Try again')),
+                                onPressed: _load, child: const Text('Try again')),
                           ],
                         ),
                       )
@@ -238,19 +238,19 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                 ),
               ),
             ),
-            _BottomNav(onSelect: _switchTab, unread: _unread),
+            _BottomNav(onSelect: _openTab, unread: _unread),
           ],
         ),
       ),
     );
   }
 }
-
+ 
 class _VehicleCard extends StatelessWidget {
   final Vehicle vehicle;
   final VoidCallback onBook;
   const _VehicleCard({required this.vehicle, required this.onBook});
-
+ 
   @override
   Widget build(BuildContext context) {
     final v = vehicle;
@@ -272,8 +272,8 @@ class _VehicleCard extends StatelessWidget {
               : DashedBox(
                   width: 64,
                   height: 64,
-                  child:
-                      Text('PHOTO', style: inter(12, color: AppColors.text2)),
+                  child: Text('PHOTO',
+                      style: inter(12, color: AppColors.text2)),
                 ),
           const SizedBox(width: 12),
           Expanded(
@@ -303,8 +303,7 @@ class _VehicleCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8)),
               ),
               child: Text('Book',
-                  style:
-                      inter(14, weight: FontWeight.w600, color: Colors.white)),
+                  style: inter(14, weight: FontWeight.w600, color: Colors.white)),
             ),
           ),
         ],
@@ -312,12 +311,12 @@ class _VehicleCard extends StatelessWidget {
     );
   }
 }
-
+ 
 class _BottomNav extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final int unread;
   const _BottomNav({required this.onSelect, required this.unread});
-
+ 
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -328,18 +327,19 @@ class _BottomNav extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _item(Icons.pedal_bike, 'Rent', true, () => onSelect(0)),
+          _item(Icons.pedal_bike, 'Rent', true, null),
           _item(Icons.receipt_long_outlined, 'My rentals', false,
               () => onSelect(1)),
           _item(Icons.notifications_none, 'Notifications', false,
               () => onSelect(2),
               badge: unread),
-          _item(Icons.settings_outlined, 'Settings', false, () => onSelect(3)),
+          _item(Icons.settings_outlined, 'Settings', false,
+              () => onSelect(3)),
         ],
       ),
     );
   }
-
+ 
   Widget _item(IconData icon, String label, bool current, VoidCallback? onTap,
       {int badge = 0}) {
     final color = current ? AppColors.ink : AppColors.hint;
