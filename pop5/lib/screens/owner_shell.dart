@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../services/api.dart';
 import '../theme.dart';
-import '../widgets/common.dart';
 import 'c1_login.dart';
 import 'o3_rentals.dart';
-import 'o9_vehicles.dart';
 import 'o2_home.dart';
 import 'o7_live_map.dart';
 import 'o8_alerts.dart';
@@ -19,8 +17,8 @@ import 'o16_settings.dart';
 /// Owner app frame: shows one tab at a time and the bottom bar from the
 /// Figma wireframe (Home · Rentals · Map · Vehicles · More).
 ///
-/// Only Rentals (O3) is built so far. The other tabs are placeholders until
-/// their owners build them: O2 Home, O7 Live map, O9 Vehicles, O15 More.
+/// Tabs: O2 Home, O3 Rentals, O7 Live map, O9 Vehicles, O15 More.
+/// Log out (O15 More and O16 Settings) is handled here, so both behave the same.
 class OwnerShell extends StatefulWidget {
   /// Which tab to open first. 1 = Rentals.
   final int initialTab;
@@ -35,6 +33,38 @@ class _OwnerShellState extends State<OwnerShell> {
 
   // IndexedStack keeps every tab alive, so switching tabs and coming back
   // does not reset the Rentals list.
+
+  /// Asks first, signs out of Supabase, then shows the login screen with
+  /// every owner screen removed (Back can't return to the owner app).
+  Future<void> _logout() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Log out?', style: inter(18, weight: FontWeight.w700)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancel', style: inter(14, color: AppColors.text2)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Log out', style: inter(14, weight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await Api.signOut();
+    } catch (e) {
+      debugPrint('Sign out failed: $e'); // still leave the owner app
+    }
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +82,7 @@ class _OwnerShellState extends State<OwnerShell> {
             },
           ),
         ),
-        onOpenSettings: () => pushPage(const O16SettingsScreen()),
+        onOpenSettings: () => pushPage(O16SettingsScreen(onLogout: _logout)),
         onOpenReports: () => pushPage(const O14ReportsScreen()),
         onOpenMaintenance: () => pushPage(const O12AiMaintenanceScreen()),
       ),
@@ -71,7 +101,8 @@ class _OwnerShellState extends State<OwnerShell> {
           ),
         ),
         onOpenReports: () => pushPage(const O14ReportsScreen()),
-        onOpenSettings: () => pushPage(const O16SettingsScreen()),
+        onOpenSettings: () => pushPage(O16SettingsScreen(onLogout: _logout)),
+        onLogout: _logout,
       ),
     ];
 
@@ -133,72 +164,6 @@ class _OwnerBottomNav extends StatelessWidget {
                 style: inter(11,
                     weight: selected ? FontWeight.w700 : FontWeight.w400,
                     color: color)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Simple page for tabs that are not built yet.
-class _PlaceholderTab extends StatelessWidget {
-  final String title;
-
-  /// Temporary "Log out" button (on More) until O15/O16 are built.
-  final bool showLogout;
-
-  const _PlaceholderTab({required this.title, this.showLogout = false});
-
-  Future<void> _logout(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Log out?', style: inter(18, weight: FontWeight.w700)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Cancel', style: inter(14, color: AppColors.text2)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text('Log out', style: inter(14, weight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !context.mounted) return;
-    await Api.signOut();
-    if (!context.mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (_) => false,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppHeader(title: title, showBack: false),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Coming soon', style: inter(15, color: AppColors.hint)),
-            if (showLogout) ...[
-              const SizedBox(height: 24),
-              OutlinedButton.icon(
-                onPressed: () => _logout(context),
-                icon: const Icon(Icons.logout, color: AppColors.dark),
-                label: Text('Log out',
-                    style: inter(14,
-                        weight: FontWeight.w600, color: AppColors.dark)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: AppColors.dark, width: 1.5),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ],
           ],
         ),
       ),
