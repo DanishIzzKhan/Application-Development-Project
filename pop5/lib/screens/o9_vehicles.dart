@@ -13,38 +13,114 @@ class O9VehiclesScreen extends StatefulWidget {
 class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
   String _selectedCategory = 'All';
 
-  final _vehicles = [
+  final List> _vehicles = [
     {
       'name': 'Bicycle B01',
       'type': 'Bicycles',
       'detail': 'Bicycle • RM 10.00 / 20 min',
-      'status': 'ON RENTAL'
+      'status': 'ON RENTAL',
     },
     {
       'name': 'Bicycle B02',
       'type': 'Bicycles',
       'detail': 'Bicycle • RM 10.00 / 20 min',
-      'status': 'AVAILABLE'
+      'status': 'AVAILABLE',
     },
     {
       'name': 'Bicycle B03',
       'type': 'Bicycles',
       'detail': 'Bicycle • RM 10.00 / 20 min',
-      'status': 'UNDER REPAIR'
+      'status': 'UNDER REPAIR',
     },
     {
       'name': 'Scooter S01',
       'type': 'Scooters',
       'detail': 'Scooter • RM 10.00 / 20 min',
-      'status': 'AVAILABLE'
+      'status': 'AVAILABLE',
     },
     {
       'name': 'Scooter S02',
       'type': 'Scooters',
       'detail': 'Scooter • RM 10.00 / 20 min',
-      'status': 'ON RENTAL'
+      'status': 'ON RENTAL',
     },
   ];
+
+  String _mapStatusForEdit(String status) {
+    switch (status.toUpperCase()) {
+      case 'UNDER REPAIR':
+        return 'Under repair';
+      case 'NOT IN USE':
+        return 'Not in use';
+      default:
+        return 'Available';
+    }
+  }
+
+  String _extractPrice(String detail) {
+    final parts = detail.split('•');
+    if (parts.length < 2) return 'RM 10.00';
+    return parts[1].split('/').first.trim();
+  }
+
+  Future<void> _openAddVehicle() async {
+    final result = await Navigator.push>(
+      context,
+      MaterialPageRoute(builder: (_) => const O10AddVehicleScreen()),
+    );
+
+    if (result != null && result['removed'] != true && mounted) {
+      final rawType = (result['type'] ?? 'Bicycle').toString();
+      final pluralType = rawType == 'Scooter' ? 'Scooters' : 'Bicycles';
+      final price = (result['price'] ?? 'RM 10').toString();
+
+      setState(() {
+        _vehicles.add({
+          'name': result['name'].toString(),
+          'type': pluralType,
+          'detail': '$rawType • $price / 20 min',
+          'status': (result['status'] ?? 'AVAILABLE').toString(),
+        });
+      });
+    }
+  }
+
+  Future<void> _openEditVehicle(Map<String, String> item) async {
+    final actualIndex = _vehicles.indexOf(item);
+    final rawType = item['type'] == 'Scooters' ? 'Scooter' : 'Bicycle';
+
+    final result = await Navigator.push>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => O10AddVehicleScreen(
+          initialName: item['name'],
+          initialType: rawType,
+          initialPrice: _extractPrice(item['detail'] ?? ''),
+          initialStatus: _mapStatusForEdit(item['status'] ?? ''),
+          isEditing: true,
+        ),
+      ),
+    );
+
+    if (result == null || actualIndex == -1 || !mounted) return;
+
+    setState(() {
+      if (result['removed'] == true) {
+        _vehicles.removeAt(actualIndex);
+      } else {
+        final updatedType = (result['type'] ?? 'Bicycle').toString();
+        final pluralType = updatedType == 'Scooter' ? 'Scooters' : 'Bicycles';
+        final price = (result['price'] ?? 'RM 10').toString();
+
+        _vehicles[actualIndex] = {
+          'name': result['name'].toString(),
+          'type': pluralType,
+          'detail': '$updatedType • $price / 20 min',
+          'status': (result['status'] ?? 'AVAILABLE').toString(),
+        };
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,12 +140,7 @@ class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.add, color: AppColors.ink, size: 26),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const O10AddVehicleScreen()),
-              );
-            },
+            onPressed: _openAddVehicle,
           ),
         ],
       ),
@@ -106,11 +177,15 @@ class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
                       const Divider(height: 1, color: AppColors.divider),
                   itemBuilder: (context, index) {
                     final item = filteredVehicles[index];
+                    final isScooter = item['type'] == 'Scooters';
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 4),
-                      leading: const Icon(Icons.pedal_bike,
-                          color: AppColors.dark, size: 24),
+                      leading: Icon(
+                        isScooter ? Icons.electric_scooter : Icons.pedal_bike,
+                        color: AppColors.dark,
+                        size: 24,
+                      ),
                       title: Text(
                         item['name']!,
                         style: inter(15,
@@ -129,7 +204,7 @@ class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
                               size: 18, color: AppColors.hint),
                         ],
                       ),
-                      onTap: () {},
+                      onTap: () => _openEditVehicle(item),
                     );
                   },
                 ),

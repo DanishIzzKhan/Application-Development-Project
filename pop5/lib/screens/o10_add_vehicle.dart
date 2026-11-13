@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/common.dart';
 
 class O10AddVehicleScreen extends StatefulWidget {
   final String? initialName;
@@ -53,8 +54,10 @@ class _O10AddVehicleScreenState extends State<O10AddVehicleScreen> {
   void _handleSave() {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a vehicle name or code')),
+      showTopErrorAlert(
+        context,
+        title: "Can't save vehicle yet",
+        bullets: ['Enter a vehicle name or code to save'],
       );
       return;
     }

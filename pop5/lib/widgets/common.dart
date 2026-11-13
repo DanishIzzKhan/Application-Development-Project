@@ -8,6 +8,94 @@ void showToast(BuildContext context, String message) {
     ..showSnackBar(SnackBar(content: Text(message)));
 }
 
+/// Top floating red-bordered validation alert matching the wireframe style.
+void showTopErrorAlert(
+  BuildContext context, {
+  required String title,
+  required List<String> bullets,
+}) {
+  final overlay = Overlay.of(context);
+  late OverlayEntry entry;
+  bool isRemoved = false;
+
+  void removeEntry() {
+    if (!isRemoved) {
+      isRemoved = true;
+      entry.remove();
+    }
+  }
+
+  const errorRed = Color(0xFFDC2626);
+
+  entry = OverlayEntry(
+    builder: (ctx) => Positioned(
+      top: MediaQuery.of(ctx).padding.top + 12,
+      left: 16,
+      right: 16,
+      child: Material(
+        color: Colors.transparent,
+        child: GestureDetector(
+          onTap: removeEntry,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: errorRed, width: 1.3),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 1),
+                  child: Icon(Icons.error_outline, color: errorRed, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: inter(
+                          13.5,
+                          weight: FontWeight.w700,
+                          color: errorRed,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...bullets.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            '• $item',
+                            style: inter(12.5, color: errorRed),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  overlay.insert(entry);
+  Future.delayed(const Duration(seconds: 3), removeEntry);
+}
+
 /// Header used by C2, C2b, C3, C5: 60px, bottom border, optional back arrow.
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -266,9 +354,9 @@ class _DashPainter extends CustomPainter {
       ..color = AppColors.border
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
-    final rrect = RRect.fromRectAndRadius(
-            Offset.zero & size, Radius.circular(radius))
-        .deflate(0.75);
+    final rrect =
+        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius))
+            .deflate(0.75);
     final path = Path()..addRRect(rrect);
     for (final m in path.computeMetrics()) {
       double d = 0;
