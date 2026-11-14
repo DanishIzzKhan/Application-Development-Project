@@ -1,187 +1,163 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../models/active_rental.dart';
+import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-class ExtendRentalScreen extends StatefulWidget {
-  final String bookingId;
-  const ExtendRentalScreen({super.key, required this.bookingId});
-
-  @override
-  State<ExtendRentalScreen> createState() => _ExtendRentalScreenState();
+/// C10 Extend rental: a bottom sheet over the active-rental screen.
+/// Returns true when the rental was extended.
+///
+/// TESTING: the database function `extend_my_rental` extends straight away and
+/// records a pending payment. Later it should wait for the gateway to confirm.
+Future<bool?> showExtendSheet(BuildContext context, ActiveRental rental) {
+  return showModalBottomSheet<bool>(
+    context: context,
+    backgroundColor: Colors.white,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (_) => _ExtendSheet(rental: rental),
+  );
 }
 
-class _ExtendRentalScreenState extends State<ExtendRentalScreen> {
-  bool _loading = true;
-  bool _submitting = false;
-  Map<String, dynamic>? _rentalData;
-  String? _error;
-  int _selectedExtraMinutes = 30;
-
-  final List<int> _extensionOptions = [30, 60, 120];
+class _ExtendSheet extends StatefulWidget {
+  final ActiveRental rental;
+  const _ExtendSheet({required this.rental});
 
   @override
-  void initState() {
-    super.initState();
-    _fetchRentalDetails();
-  }
+  State<_ExtendSheet> createState() => _ExtendSheetState();
+}
 
-  Future<void> _fetchRentalDetails() async {
+class _ExtendSheetState extends State<_ExtendSheet> {
+  static const _maxBlocks = 6; // 2 hours at most per extension
+
+  int _blocks = 1;
+  bool _loading = false;
+  String? _error;
+
+  ActiveRental get _r => widget.rental;
+  DateTime get _newEnd => _r.end.add(Duration(minutes: _blocks * 20));
+  double get _cost => _blocks * _r.ratePerBlock;
+
+  Future<void> _confirm() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final response = await Supabase.instance.client
-          .from('bookings')
-          .select('*, vehicles(*)')
-          .eq('id', widget.bookingId)
-          .single();
-      if (mounted) {
-        setState(() {
-          _rentalData = response;
-          _loading = false;
-        });
-      }
+      await supabase.rpc('extend_my_rental',
+          params: {'p_rental_id': _r.id, 'p_blocks': _blocks});
+      if (mounted) Navigator.pop(context, true);
+    } on PostgrestException catch (e) {
+      if (mounted) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _confirmExtension() async {
-    setState(() => _submitting = true);
-    try {
-      final currentEndTimeStr = _rentalData?['end_time'];
-      if (currentEndTimeStr == null) throw Exception('End time not found');
-
-      final currentEndTime = DateTime.parse(currentEndTimeStr);
-      final newEndTime = currentEndTime.add(Duration(minutes: _selectedExtraMinutes));
-
-      final extraCost = _selectedExtraMinutes == 30 ? 3.00 : (_selectedExtraMinutes == 60 ? 5.00 : 9.00);
-      final currentTotal = (_rentalData?['total_amount'] ?? 0.0) as num;
-      final newTotal = currentTotal.toDouble() + extraCost;
-
-      await Supabase.instance.client.from('bookings').update({
-        'end_time': newEndTime.toIso8601String(),
-        'duration_minutes': (_rentalData?['duration_minutes'] ?? 60) + _selectedExtraMinutes,
-        'total_amount': newTotal,
-      }).eq('id', widget.bookingId);
-
-      if (!mounted) return;
-      showToast(context, 'Rental extended successfully by $_selectedExtraMinutes mins!');
-      Navigator.pop(context, true);
-    } catch (e) {
-      if (mounted) {
-        showToast(context, 'Failed to extend rental: $e');
-        setState(() => _submitting = false);
-      }
+      if (mounted) setState(() => _error = 'Could not extend: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final vehicleName = _rentalData?['vehicles']?['name'] ?? 'Vehicle';
+    Widget row(String left, String right, {bool bold = false}) => Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(left, style: inter(14, color: AppColors.text2)),
+            Text(right,
+                style: inter(14,
+                    weight: bold ? FontWeight.w700 : FontWeight.w400)),
+          ],
+        );
 
-    return Scaffold(
-      appBar: const AppHeader(title: 'Extend Rental (C10)'),
-      body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.dark))
-            : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text('Could not load booking info.\n$_error',
-                              textAlign: TextAlign.center,
-                              style: inter(14, color: AppColors.text2)),
-                          const SizedBox(height: 12),
-                          TextButton(
-                            onPressed: _fetchRentalDetails,
-                            child: const Text('Try again'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SizedBox(height: 16),
-                        Text('Extend Your Time',
-                            style: inter(20, weight: FontWeight.w700)),
-                        const SizedBox(height: 4),
-                        Text('Select extra duration for $vehicleName',
-                            style: inter(14, color: AppColors.text2)),
-                        const SizedBox(height: 24),
-                        ..._extensionOptions.map((mins) {
-                          final isSelected = _selectedExtraMinutes == mins;
-                          final price = mins == 30 ? 3.00 : (mins == 60 ? 5.00 : 9.00);
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: InkWell(
-                              onTap: () => setState(() => _selectedExtraMinutes = mins),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: isSelected ? AppColors.surface : Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isSelected ? AppColors.dark : AppColors.divider,
-                                    width: isSelected ? 2.0 : 1.0,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                                          color: isSelected ? AppColors.dark : AppColors.hint,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Text('$mins Minutes',
-                                            style: inter(16, weight: FontWeight.w600)),
-                                      ],
-                                    ),
-                                    Text('RM ${price.toStringAsFixed(2)}',
-                                        style: inter(16, weight: FontWeight.w700)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
-                        const Spacer(),
-                        PrimaryButton(
-                          label: _submitting ? 'Processing Extension...' : 'Confirm & Pay Extension',
-                          onPressed: _submitting ? null : _confirmExtension,
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 48),
-                            side: const BorderSide(color: AppColors.border, width: 1.5),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: Text('Cancel', style: inter(14, weight: FontWeight.w600, color: AppColors.ink)),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+            16, 20, 16, 24 + MediaQuery.of(context).viewInsets.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Extend rental', style: inter(20, weight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text('${_r.vehicleName} · current end time ${clockLabel(_r.end)}',
+                style: inter(14, color: AppColors.text2)),
+            const SizedBox(height: 14),
+            Text('Add time', style: inter(14, weight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _step('−', _blocks > 1 ? () => setState(() => _blocks--) : null),
+                const SizedBox(width: 18),
+                Text('+${_blocks * 20} min',
+                    style: inter(20, weight: FontWeight.w700)),
+                const SizedBox(width: 18),
+                _step('+',
+                    _blocks < _maxBlocks ? () => setState(() => _blocks++) : null),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text('Each tap adds 20 minutes',
+                textAlign: TextAlign.center,
+                style: inter(12, color: AppColors.text2)),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.divider, width: 1.5),
+              ),
+              child: Column(
+                children: [
+                  row('New end time', clockLabel(_newEnd), bold: true),
+                  const SizedBox(height: 6),
+                  row('Extra cost', 'RM ${_cost.toStringAsFixed(2)}', bold: true),
+                  const SizedBox(height: 6),
+                  row('Pay with', "Touch 'n Go eWallet"),
+                ],
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(_error!, style: inter(13, color: Colors.red.shade700)),
+            ],
+            const SizedBox(height: 14),
+            PrimaryButton(
+                label: 'Confirm extension',
+                loading: _loading,
+                onPressed: _confirm),
+            const SizedBox(height: 4),
+            TextButton(
+              onPressed: _loading ? null : () => Navigator.pop(context, false),
+              child: Text('Cancel',
+                  style: inter(14, weight: FontWeight.w600, color: AppColors.ink)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _step(String symbol, VoidCallback? onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+        opacity: onTap == null ? 0.35 : 1,
+        child: Container(
+          width: 48,
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.dark, width: 1.5),
+          ),
+          child: Text(symbol, style: inter(22)),
+        ),
       ),
     );
   }

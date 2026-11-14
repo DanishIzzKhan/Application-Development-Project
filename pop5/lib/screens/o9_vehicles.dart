@@ -13,7 +13,7 @@ class O9VehiclesScreen extends StatefulWidget {
 class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
   String _selectedCategory = 'All';
 
-  final List> _vehicles = [
+  final List<Map<String, String>> _vehicles = [
     {
       'name': 'Bicycle B01',
       'type': 'Bicycles',
@@ -64,7 +64,7 @@ class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
   }
 
   Future<void> _openAddVehicle() async {
-    final result = await Navigator.push>(
+    final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(builder: (_) => const O10AddVehicleScreen()),
     );
@@ -89,7 +89,7 @@ class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
     final actualIndex = _vehicles.indexOf(item);
     final rawType = item['type'] == 'Scooters' ? 'Scooter' : 'Bicycle';
 
-    final result = await Navigator.push>(
+    final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
         builder: (_) => O10AddVehicleScreen(
