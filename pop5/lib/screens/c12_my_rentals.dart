@@ -9,8 +9,7 @@ import 'c3_vehicles.dart';
 import 'c7_waiting_for_payment.dart';
 import 'c8_receipt.dart';
 import 'c9_active_rental.dart';
-import 'c9b_rental_ten_min_left.dart';
-import 'c9c_rental_overdue.dart';
+import 'c12b_booking_pass.dart';
 import 'c13_notifications.dart';
 import 'c14_settings.dart';
 
@@ -152,20 +151,18 @@ class _MyRentalsScreenState extends State<MyRentalsScreen> {
     }
 
     if (status == 'ready') {
-      // Paid, waiting for the owner to hand over the vehicle.
-      _openReceipt(id);
+      // Paid, waiting for the owner to hand over the vehicle: show the QR pass.
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => BookingPassScreen(rentalId: id)),
+      );
+      if (mounted) _load();
       return;
     }
 
-    final end = DateTime.tryParse('${booking['scheduled_end_time'] ?? ''}');
-    final left = end?.difference(DateTime.now()) ?? const Duration(minutes: 30);
-    final Widget screen = left.isNegative
-        ? RentalOverdueScreen(bookingId: id)
-        : left <= const Duration(minutes: 10)
-            ? RentalTenMinLeftScreen(bookingId: id)
-            : ActiveRentalScreen(bookingId: id);
-
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    // Running rental: C9 switches itself to the 10-minute and overdue looks.
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ActiveRentalScreen(bookingId: id)),
+    );
     if (mounted) _load();
   }
 
@@ -255,7 +252,7 @@ class _MyRentalsScreenState extends State<MyRentalsScreen> {
                               buttonLabel: isPending
                                   ? 'View'
                                   : isReady
-                                      ? 'Receipt'
+                                      ? 'Show pass'
                                       : 'Open',
                               filled: !(isPending || isReady),
                               onPressed: () => _openCurrent(b),
