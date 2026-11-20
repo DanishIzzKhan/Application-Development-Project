@@ -8,10 +8,13 @@ import 'vehicle.dart';
 class OwnerRental {
   static const blockMinutes = 20; // rentals are booked in 20-minute blocks
   static const graceMinutes = 5; // free minutes after the end time
-  static const maxAutoLateBlocks = 3; // stop auto-charging after 3 blocks
 
   final String id;
-  final String bookingCode; // e.g. ISY-4821
+  final String bookingCode; // rentals.booking_code, 8 characters e.g. 3F9A1C2B
+
+  /// rentals.qr_token: the long secret inside the customer's booking QR.
+  /// O3b scans it to find this booking. Walk-ins have none (no QR).
+  final String? qrToken;
   final String vehicleName; // e.g. "Scooter S01"
   final String customerName; // username, or the walk-in name
   final bool isWalkIn;
@@ -49,6 +52,7 @@ class OwnerRental {
     required this.lateRatePerBlock,
     required this.scheduledStart,
     required this.scheduledEnd,
+    this.qrToken,
     this.isWalkIn = false,
     this.isPaid = false,
     this.paidOnline = false,
@@ -76,11 +80,15 @@ class OwnerRental {
     DateTime? now,
   }) {
     final t = now ?? DateTime.now();
-    final n =
-        Random().nextInt(9000) + 1000; // sample code until the Api makes one
+    // Sample code until the Api makes one: 8 hex characters like the database.
+    final code = Random()
+        .nextInt(0x7FFFFFFF)
+        .toRadixString(16)
+        .toUpperCase()
+        .padLeft(8, '0');
     return OwnerRental(
-      id: 'RNT-$n',
-      bookingCode: 'ISY-$n',
+      id: 'RNT-$code',
+      bookingCode: code,
       vehicleName: vehicle.name,
       customerName: 'Walk-in: $name',
       isWalkIn: true,
@@ -125,12 +133,12 @@ class OwnerRental {
     return m > 0 ? m : 0;
   }
 
-  /// Late blocks = round up ((minutes late − 5) ÷ 20), capped at 3.
+  /// Late blocks = round up ((minutes late − 5) ÷ 20). No upper limit:
+  /// a new block is charged every 20 minutes until the vehicle is back.
   /// Inside the 5-minute grace period there is no charge.
   static int lateBlocksFor(int minutesLate) {
     if (minutesLate <= graceMinutes) return 0;
-    final blocks = ((minutesLate - graceMinutes) / blockMinutes).ceil();
-    return blocks > maxAutoLateBlocks ? maxAutoLateBlocks : blocks;
+    return ((minutesLate - graceMinutes) / blockMinutes).ceil();
   }
 
   int lateBlocks(DateTime now) => lateBlocksFor(minutesLate(now));
@@ -150,6 +158,7 @@ class OwnerRental {
   OwnerRental markedReturned(DateTime at) => OwnerRental(
         id: id,
         bookingCode: bookingCode,
+        qrToken: qrToken,
         vehicleName: vehicleName,
         customerName: customerName,
         isWalkIn: isWalkIn,
@@ -175,6 +184,7 @@ class OwnerRental {
   OwnerRental startedAt(DateTime now) => OwnerRental(
         id: id,
         bookingCode: bookingCode,
+        qrToken: qrToken,
         vehicleName: vehicleName,
         customerName: customerName,
         isWalkIn: isWalkIn,
@@ -250,6 +260,7 @@ List<Vehicle> sampleAvailableVehicles() =>
 OwnerRental _sample({
   required String id,
   required String code,
+  String? qr,
   required Vehicle v,
   required String customer,
   required String status,
@@ -262,6 +273,7 @@ OwnerRental _sample({
     OwnerRental(
       id: id,
       bookingCode: code,
+      qrToken: qr,
       vehicleName: v.name,
       customerName: customer,
       isWalkIn: walkIn,
@@ -287,7 +299,8 @@ List<OwnerRental> sampleOwnerRentals([DateTime? now]) {
     // Waiting for payment: 3 × RM 10 = RM 30.00
     _sample(
         id: 'RNT-8801',
-        code: 'ISY-4821',
+        code: '3F9A1C2B',
+        qr: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90',
         v: _scootS01,
         customer: 'ahmad_rides',
         status: 'pending_payment',
@@ -296,7 +309,8 @@ List<OwnerRental> sampleOwnerRentals([DateTime? now]) {
     // Ready for handover, paid online: 3 × RM 10 = RM 30.00
     _sample(
         id: 'RNT-8802',
-        code: 'ISY-4822',
+        code: '7C4E0B19',
+        qr: 'b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1',
         v: _roadR02,
         customer: 'ahmad_rides',
         status: 'ready',
@@ -307,7 +321,7 @@ List<OwnerRental> sampleOwnerRentals([DateTime? now]) {
     // Ready for handover, walk-in paid cash: 2 × RM 10 = RM 20.00
     _sample(
         id: 'RNT-8803',
-        code: 'ISY-4823',
+        code: 'D05A6E3F',
         v: _kidsK01,
         customer: 'Walk-in: Siti',
         status: 'ready',
@@ -318,7 +332,8 @@ List<OwnerRental> sampleOwnerRentals([DateTime? now]) {
     // Active, 10 min late: 1 late block × RM 10 auto-charged
     _sample(
         id: 'RNT-8790',
-        code: 'ISY-4790',
+        code: '9B21F7A4',
+        qr: 'c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2',
         v: _scootS02,
         customer: 'mei_ling',
         status: 'active',
@@ -329,7 +344,7 @@ List<OwnerRental> sampleOwnerRentals([DateTime? now]) {
     // Active walk-in, 10 min overdue: extra 1 × RM 10
     _sample(
         id: 'RNT-8791',
-        code: 'ISY-4791',
+        code: 'E8136C5D',
         v: _mtbM02,
         customer: 'Walk-in: Ali',
         status: 'active',

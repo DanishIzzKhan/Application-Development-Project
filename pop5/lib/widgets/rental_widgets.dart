@@ -141,7 +141,7 @@ class SmallButton extends StatelessWidget {
 }
 
 /// Card at the top of O5 / O6 / O6c:
-/// "Scooter S01 · ahmad_rides" / "Booking ISY-4821 · now · 1 hr 0 min" / optional link.
+/// "Scooter S01 · ahmad_rides" / "Booking 3F9A1C2B · now · 1 hr 0 min" / optional link.
 class RentalSummaryCard extends StatelessWidget {
   final String title;
   final String subtitle;

@@ -29,7 +29,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     });
     try {
       final response = await Supabase.instance.client
-          .from('bookings')
+          .from('rentals')
           .select('*, vehicles(*)')
           .eq('id', widget.bookingId)
           .single();
@@ -55,14 +55,14 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
 
   @override
   Widget build(BuildContext context) {
-    DateTime? startTime;
-    DateTime? endTime;
-    if (_receiptData?['start_time'] != null) {
-      startTime = DateTime.tryParse(_receiptData!['start_time']);
-    }
-    if (startTime != null && _receiptData?['duration_minutes'] != null) {
-      endTime = startTime.add(Duration(minutes: _receiptData!['duration_minutes']));
-    }
+    final data = _receiptData;
+    final startTime =
+        DateTime.tryParse('${data?['scheduled_start_time'] ?? ''}')?.toLocal();
+    final endTime =
+        DateTime.tryParse('${data?['scheduled_end_time'] ?? ''}')?.toLocal();
+    final durationMins = ((data?['blocks_booked'] ?? 3) as num).toInt() * 20;
+    final v = data?['vehicles'];
+    final vehicleName = v == null ? 'Vehicle' : '${v['type']} ${v['id']}';
 
     return Scaffold(
       appBar: const AppHeader(title: 'Receipt'),
@@ -115,7 +115,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text('Vehicle', style: inter(14, color: AppColors.text2)),
-                                  Text(_receiptData?['vehicles']?['name'] ?? 'Vehicle',
+                                  Text(vehicleName,
                                       style: inter(14, weight: FontWeight.w600)),
                                 ],
                               ),
@@ -124,7 +124,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text('Duration', style: inter(14, color: AppColors.text2)),
-                                  Text('${_receiptData?['duration_minutes'] ?? 60} mins',
+                                  Text('$durationMins mins',
                                       style: inter(14, weight: FontWeight.w600)),
                                 ],
                               ),

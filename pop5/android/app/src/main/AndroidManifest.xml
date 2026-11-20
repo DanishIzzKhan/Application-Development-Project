@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- O3b Scan booking: the owner scans the customer's booking QR. -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <application
         android:label="pop5"
         android:name="${applicationName}"
