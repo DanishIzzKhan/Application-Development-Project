@@ -8,7 +8,6 @@ import 'vehicle.dart';
 class OwnerRental {
   static const blockMinutes = 20; // rentals are booked in 20-minute blocks
   static const graceMinutes = 5; // free minutes after the end time
-  static const maxAutoLateBlocks = 3; // stop auto-charging after 3 blocks
 
   final String id;
   final String bookingCode; // rentals.booking_code, 8 characters e.g. 3F9A1C2B
@@ -134,12 +133,12 @@ class OwnerRental {
     return m > 0 ? m : 0;
   }
 
-  /// Late blocks = round up ((minutes late − 5) ÷ 20), capped at 3.
+  /// Late blocks = round up ((minutes late − 5) ÷ 20). No upper limit:
+  /// a new block is charged every 20 minutes until the vehicle is back.
   /// Inside the 5-minute grace period there is no charge.
   static int lateBlocksFor(int minutesLate) {
     if (minutesLate <= graceMinutes) return 0;
-    final blocks = ((minutesLate - graceMinutes) / blockMinutes).ceil();
-    return blocks > maxAutoLateBlocks ? maxAutoLateBlocks : blocks;
+    return ((minutesLate - graceMinutes) / blockMinutes).ceil();
   }
 
   int lateBlocks(DateTime now) => lateBlocksFor(minutesLate(now));
