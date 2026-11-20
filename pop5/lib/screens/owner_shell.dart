@@ -20,9 +20,9 @@ import 'o16_settings.dart';
 /// Tabs: O2 Home, O3 Rentals, O7 Live map, O9 Vehicles, O15 More.
 /// Log out (O15 More and O16 Settings) is handled here, so both behave the same.
 class OwnerShell extends StatefulWidget {
-  /// Which tab to open first. 1 = Rentals.
+  /// Which tab to open first: 0 = Home (default after login), 1 = Rentals.
   final int initialTab;
-  const OwnerShell({super.key, this.initialTab = 1});
+  const OwnerShell({super.key, this.initialTab = 0});
 
   @override
   State<OwnerShell> createState() => _OwnerShellState();
