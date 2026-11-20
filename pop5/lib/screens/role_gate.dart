@@ -9,7 +9,7 @@ import 'owner_shell.dart';
 
 /// Shown right after login (C1) and when the app starts already signed in.
 /// Asks Supabase for the user's role (users.role), then opens:
-///   owner    -> OwnerShell (owner app, Rentals tab)
+///   owner    -> OwnerShell (owner app, Home tab)
 ///   customer -> C3 Vehicles (also when no role is found)
 /// Customers can never choose their role; it is set in Supabase only.
 ///
