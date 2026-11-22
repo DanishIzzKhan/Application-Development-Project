@@ -14,8 +14,9 @@ class ShopRules {
   final double lateRate;
   const ShopRules(this.graceMinutes, this.lateRate);
 
-  String get lateRateLabel =>
-      lateRate > 0 ? 'RM ${lateRate.toStringAsFixed(2)}' : AppConfig.lateFeeLabel;
+  String get lateRateLabel => lateRate > 0
+      ? 'RM ${lateRate.toStringAsFixed(2)}'
+      : AppConfig.lateFeeLabel;
 }
 
 class Api {
@@ -55,7 +56,8 @@ class Api {
           final res = await supabase.rpc('get_email_by_phone',
               params: {'p_phone': normalizePhone(id)});
           if (res == null || (res as String).isEmpty) {
-            throw const AuthException('No account found for this phone number.');
+            throw const AuthException(
+                'No account found for this phone number.');
           }
           email = res;
         }
@@ -136,31 +138,93 @@ class Api {
         return rows.map((m) => Vehicle.fromMap(m)).toList();
       }, () => _sampleVehicles(f));
 
-  /// Banner on C3: the customer's rental that is checked in / running.
-  static Future<({String id, String vehicle, DateTime end})?> fetchActiveRental() =>
-      _orPreview<({String id, String vehicle, DateTime end})?>(() async {
-        final uid = supabase.auth.currentUser?.id;
-        if (uid == null) return null;
+  // ---------- O9 / O10 owner fleet management ----------
+
+  static Future<List<Vehicle>> fetchOwnerVehicles() =>
+      _orPreview<List<Vehicle>>(() async {
         final rows = await supabase
-            .from('rentals')
-            .select('id, scheduled_end_time, vehicles(id, type)')
-            .eq('customer_id', uid)
-            .inFilter('status', ['checked_in', 'active'])
-            .order('scheduled_end_time')
-            .limit(1);
-        if (rows.isEmpty) return null;
-        final r = rows.first;
-        final v = r['vehicles'] as Map;
-        return (
-          id: r['id'] as String,
-          vehicle: '${v['type']} ${v['id']}',
-          end: DateTime.parse(r['scheduled_end_time'] as String).toLocal(),
-        );
-      }, () => (
-            id: 'RNT-10000',
-            vehicle: 'Bicycle BK-01',
-            end: DateTime.now().add(const Duration(minutes: 42)),
-          ));
+            .from('vehicles')
+            .select()
+            .eq('is_active', true)
+            .order('id');
+        return rows.map((m) => Vehicle.fromMap(m)).toList();
+      }, () => List<Vehicle>.from(_sample));
+
+  static Future<void> upsertVehicle({
+    required String id,
+    required String type,
+    required double ratePerBlock,
+    required double lateRatePerBlock,
+    required String status,
+    XFile? photoFile,
+    String? existingPhotoUrl,
+  }) =>
+      _orPreview<void>(() async {
+        var photoUrl = existingPhotoUrl;
+        if (photoFile != null) {
+          try {
+            final cleanId = id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+            final path =
+                '$cleanId-${DateTime.now().millisecondsSinceEpoch}.jpg';
+            final bucket = supabase.storage.from('vehicle-photos');
+            await bucket.uploadBinary(
+              path,
+              await photoFile.readAsBytes(),
+              fileOptions: FileOptions(
+                upsert: true,
+                contentType: photoFile.mimeType ?? 'image/jpeg',
+              ),
+            );
+            photoUrl = bucket.getPublicUrl(path);
+          } catch (e) {
+            debugPrint('Vehicle photo upload skipped: $e');
+          }
+        }
+
+        await supabase.from('vehicles').upsert({
+          'id': id,
+          'type': type,
+          'rate_per_block': ratePerBlock,
+          'late_rate_per_block': lateRatePerBlock,
+          'status': status,
+          'is_active': true,
+          if (photoUrl != null) 'photo_url': photoUrl,
+        });
+      }, () {});
+
+  static Future<void> deleteVehicle(String id) => _orPreview<void>(() async {
+        await supabase
+            .from('vehicles')
+            .update({'is_active': false}).eq('id', id);
+      }, () {});
+
+  /// Banner on C3: the customer's rental that is checked in / running.
+  static Future<({String id, String vehicle, DateTime end})?>
+      fetchActiveRental() =>
+          _orPreview<({String id, String vehicle, DateTime end})?>(() async {
+            final uid = supabase.auth.currentUser?.id;
+            if (uid == null) return null;
+            final rows = await supabase
+                .from('rentals')
+                .select('id, scheduled_end_time, vehicles(id, type)')
+                .eq('customer_id', uid)
+                .inFilter('status', ['checked_in', 'active'])
+                .order('scheduled_end_time')
+                .limit(1);
+            if (rows.isEmpty) return null;
+            final r = rows.first;
+            final v = r['vehicles'] as Map;
+            return (
+              id: r['id'] as String,
+              vehicle: '${v['type']} ${v['id']}',
+              end: DateTime.parse(r['scheduled_end_time'] as String).toLocal(),
+            );
+          },
+              () => (
+                    id: 'RNT-10000',
+                    vehicle: 'Bicycle BK-01',
+                    end: DateTime.now().add(const Duration(minutes: 42)),
+                  ));
 
   /// Number on the Notifications tab.
   static Future<int> fetchUnreadCount() => _orPreview<int>(() async {
@@ -182,8 +246,8 @@ class Api {
             .select('grace_minutes, late_rate')
             .eq('id', 1)
             .single();
-        return ShopRules(
-            (r['grace_minutes'] as num).toInt(), (r['late_rate'] as num).toDouble());
+        return ShopRules((r['grace_minutes'] as num).toInt(),
+            (r['late_rate'] as num).toDouble());
       }, () => const ShopRules(5, 0));
 
   /// Only vehicle, start time and number of 20-minute blocks are sent.
@@ -208,7 +272,6 @@ class Api {
 
   static String get lateFee => AppConfig.lateFeeLabel;
 
-
   // ---------- Authentication helpers ----------
 
   static Future<String?> fetchMyRole() async {
@@ -216,11 +279,8 @@ class Api {
 
     if (uid == null) return null;
 
-    final row = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', uid)
-        .maybeSingle();
+    final row =
+        await supabase.from('users').select('role').eq('id', uid).maybeSingle();
 
     return row?['role'] as String?;
   }
@@ -229,15 +289,44 @@ class Api {
     await supabase.auth.signOut();
   }
 
-
   // ---------- sample data (preview mode only) ----------
 
   static const _sample = [
-    Vehicle(id: 'BK-01', type: 'Bicycle', pricePer20Min: 3, status: 'Available'),
-    Vehicle(id: 'BK-02', type: 'Bicycle', pricePer20Min: 3, status: 'Available'),
-    Vehicle(id: 'SC-01', type: 'Scooter', pricePer20Min: 5, status: 'Available'),
-    Vehicle(id: 'SC-02', type: 'Scooter', pricePer20Min: 5, status: 'Available'),
-    Vehicle(id: 'BK-03', type: 'Bicycle', pricePer20Min: 3, status: 'Rented'),
+    Vehicle(
+      id: 'BK-01',
+      type: 'Bicycle',
+      pricePer20Min: 10,
+      lateRatePer20Min: 10,
+      status: 'Available',
+    ),
+    Vehicle(
+      id: 'BK-02',
+      type: 'Bicycle',
+      pricePer20Min: 10,
+      lateRatePer20Min: 10,
+      status: 'Available',
+    ),
+    Vehicle(
+      id: 'SC-01',
+      type: 'Scooter',
+      pricePer20Min: 10,
+      lateRatePer20Min: 10,
+      status: 'Available',
+    ),
+    Vehicle(
+      id: 'PB-01',
+      type: 'Pushbike',
+      pricePer20Min: 5,
+      lateRatePer20Min: 5,
+      status: 'Available',
+    ),
+    Vehicle(
+      id: 'BS-01',
+      type: 'Bubble Stick',
+      pricePer20Min: 5,
+      lateRatePer20Min: 5,
+      status: 'Available',
+    ),
   ];
 
   static List<Vehicle> _sampleVehicles(VehicleFilter f) {

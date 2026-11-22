@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../models/vehicle.dart';
+import '../services/api.dart';
 import '../theme.dart';
 import 'o10_add_vehicle.dart';
 
-/// ADP-117: O9 Vehicles Management Screen (Figma Wireframe Version)
+/// O9 Vehicles Management Screen (Connected to Supabase)
 class O9VehiclesScreen extends StatefulWidget {
   const O9VehiclesScreen({super.key});
 
@@ -12,121 +14,111 @@ class O9VehiclesScreen extends StatefulWidget {
 
 class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
   String _selectedCategory = 'All';
+  List<Vehicle> _vehicles = [];
+  bool _loading = true;
+  String? _error;
 
-  final List<Map<String, String>> _vehicles = [
-    {
-      'name': 'Bicycle B01',
-      'type': 'Bicycles',
-      'detail': 'Bicycle • RM 10.00 / 20 min',
-      'status': 'ON RENTAL',
-    },
-    {
-      'name': 'Bicycle B02',
-      'type': 'Bicycles',
-      'detail': 'Bicycle • RM 10.00 / 20 min',
-      'status': 'AVAILABLE',
-    },
-    {
-      'name': 'Bicycle B03',
-      'type': 'Bicycles',
-      'detail': 'Bicycle • RM 10.00 / 20 min',
-      'status': 'UNDER REPAIR',
-    },
-    {
-      'name': 'Scooter S01',
-      'type': 'Scooters',
-      'detail': 'Scooter • RM 10.00 / 20 min',
-      'status': 'AVAILABLE',
-    },
-    {
-      'name': 'Scooter S02',
-      'type': 'Scooters',
-      'detail': 'Scooter • RM 10.00 / 20 min',
-      'status': 'ON RENTAL',
-    },
+  final List<String> _categories = [
+    'All',
+    'Bicycles',
+    'Scooters',
+    'Pushbike',
+    'Bubble Stick',
   ];
 
-  String _mapStatusForEdit(String status) {
-    switch (status.toUpperCase()) {
-      case 'UNDER REPAIR':
-        return 'Under repair';
-      case 'NOT IN USE':
-        return 'Not in use';
-      default:
-        return 'Available';
+  @override
+  void initState() {
+    super.initState();
+    _loadVehicles();
+  }
+
+  Future<void> _loadVehicles() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await Api.fetchOwnerVehicles();
+      if (mounted) {
+        setState(() {
+          _vehicles = list;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
     }
   }
 
-  String _extractPrice(String detail) {
-    final parts = detail.split('•');
-    if (parts.length < 2) return 'RM 10.00';
-    return parts[1].split('/').first.trim();
+  bool _matchesCategory(Vehicle v) {
+    switch (_selectedCategory) {
+      case 'Bicycles':
+        return v.type == 'Bicycle';
+      case 'Scooters':
+        return v.type == 'Scooter';
+      case 'Pushbike':
+        return v.type == 'Pushbike';
+      case 'Bubble Stick':
+        return v.type == 'Bubble Stick';
+      default:
+        return true;
+    }
+  }
+
+  String _badgeText(String status) {
+    switch (status) {
+      case 'Rented':
+        return 'ON RENTAL';
+      case 'Maintenance':
+        return 'UNDER REPAIR';
+      case 'Not in use':
+        return 'NOT IN USE';
+      default:
+        return 'AVAILABLE';
+    }
+  }
+
+  IconData _typeIcon(String type) {
+    switch (type) {
+      case 'Scooter':
+        return Icons.electric_scooter;
+      case 'Bubble Stick':
+        return Icons.auto_awesome;
+      default:
+        return Icons.pedal_bike;
+    }
   }
 
   Future<void> _openAddVehicle() async {
-    final result = await Navigator.push<Map<String, dynamic>>(
+    final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const O10AddVehicleScreen()),
     );
-
-    if (result != null && result['removed'] != true && mounted) {
-      final rawType = (result['type'] ?? 'Bicycle').toString();
-      final pluralType = rawType == 'Scooter' ? 'Scooters' : 'Bicycles';
-      final price = (result['price'] ?? 'RM 10').toString();
-
-      setState(() {
-        _vehicles.add({
-          'name': result['name'].toString(),
-          'type': pluralType,
-          'detail': '$rawType • $price / 20 min',
-          'status': (result['status'] ?? 'AVAILABLE').toString(),
-        });
-      });
+    if (changed == true && mounted) {
+      await _loadVehicles();
     }
   }
 
-  Future<void> _openEditVehicle(Map<String, String> item) async {
-    final actualIndex = _vehicles.indexOf(item);
-    final rawType = item['type'] == 'Scooters' ? 'Scooter' : 'Bicycle';
-
-    final result = await Navigator.push<Map<String, dynamic>>(
+  Future<void> _openEditVehicle(Vehicle vehicle) async {
+    final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => O10AddVehicleScreen(
-          initialName: item['name'],
-          initialType: rawType,
-          initialPrice: _extractPrice(item['detail'] ?? ''),
-          initialStatus: _mapStatusForEdit(item['status'] ?? ''),
-          isEditing: true,
-        ),
+        builder: (_) => O10AddVehicleScreen(vehicle: vehicle),
       ),
     );
-
-    if (result == null || actualIndex == -1 || !mounted) return;
-
-    setState(() {
-      if (result['removed'] == true) {
-        _vehicles.removeAt(actualIndex);
-      } else {
-        final updatedType = (result['type'] ?? 'Bicycle').toString();
-        final pluralType = updatedType == 'Scooter' ? 'Scooters' : 'Bicycles';
-        final price = (result['price'] ?? 'RM 10').toString();
-
-        _vehicles[actualIndex] = {
-          'name': result['name'].toString(),
-          'type': pluralType,
-          'detail': '$updatedType • $price / 20 min',
-          'status': (result['status'] ?? 'AVAILABLE').toString(),
-        };
-      }
-    });
+    if (changed == true && mounted) {
+      await _loadVehicles();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final filteredVehicles = _selectedCategory == 'All'
-        ? _vehicles
-        : _vehicles.where((v) => v['type'] == _selectedCategory).toList();
+    final filteredVehicles = _vehicles.where(_matchesCategory).toList();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -139,79 +131,121 @@ class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
         backgroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh, color: AppColors.ink, size: 22),
+            onPressed: _loadVehicles,
+          ),
+          IconButton(
             icon: const Icon(Icons.add, color: AppColors.ink, size: 26),
             onPressed: _openAddVehicle,
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Row(
-                children: [
-                  _buildFilterChip('All'),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('Bicycles'),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('Scooters'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.divider),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: filteredVehicles.length,
-                  separatorBuilder: (context, index) =>
-                      const Divider(height: 1, color: AppColors.divider),
-                  itemBuilder: (context, index) {
-                    final item = filteredVehicles[index];
-                    final isScooter = item['type'] == 'Scooters';
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
-                      leading: Icon(
-                        isScooter ? Icons.electric_scooter : Icons.pedal_bike,
-                        color: AppColors.dark,
-                        size: 24,
-                      ),
-                      title: Text(
-                        item['name']!,
-                        style: inter(15,
-                            weight: FontWeight.bold, color: AppColors.ink),
-                      ),
-                      subtitle: Text(
-                        item['detail']!,
-                        style: inter(12, color: AppColors.hint),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildWireframeBadge(item['status']!),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.chevron_right,
-                              size: 18, color: AppColors.hint),
-                        ],
-                      ),
-                      onTap: () => _openEditVehicle(item),
+      body: RefreshIndicator(
+        onRefresh: _loadVehicles,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Row(
+                  children: _categories.map((cat) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: _buildFilterChip(cat),
                     );
-                  },
+                  }).toList(),
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
-          ],
+              const SizedBox(height: 8),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Failed to load vehicles:\n$_error',
+                        textAlign: TextAlign.center,
+                        style: inter(13, color: Colors.red),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        onPressed: _loadVehicles,
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              else if (filteredVehicles.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 48),
+                  child: Center(
+                    child: Text(
+                      'No vehicles in this category',
+                      style: inter(14, color: AppColors.hint),
+                    ),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppColors.divider),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: filteredVehicles.length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1, color: AppColors.divider),
+                      itemBuilder: (context, index) {
+                        final item = filteredVehicles[index];
+                        final badge = _badgeText(item.status);
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 4),
+                          leading: Icon(
+                            _typeIcon(item.type),
+                            color: AppColors.dark,
+                            size: 24,
+                          ),
+                          title: Text(
+                            item.name,
+                            style: inter(15,
+                                weight: FontWeight.bold, color: AppColors.ink),
+                          ),
+                          subtitle: Text(
+                            '${item.type} • ${item.priceLabel} / 20 min • Late: ${item.latePriceLabel}',
+                            style: inter(12, color: AppColors.hint),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildWireframeBadge(badge),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.chevron_right,
+                                  size: 18, color: AppColors.hint),
+                            ],
+                          ),
+                          onTap: () => _openEditVehicle(item),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
     );
@@ -243,7 +277,7 @@ class _O9VehiclesScreenState extends State<O9VehiclesScreen> {
   }
 
   Widget _buildWireframeBadge(String status) {
-    bool isDark = status == 'UNDER REPAIR';
+    final isDark = status == 'UNDER REPAIR' || status == 'NOT IN USE';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
