@@ -1,36 +1,46 @@
 /// Maps to the `vehicles` table.
 class Vehicle {
   final String id; // e.g. 'BK-01', 'SC-02'
-  final String type; // 'Bicycle' | 'Scooter'
+  final String type; // 'Bicycle' | 'Scooter' | 'Pushbike' | 'Bubble Stick'
   final double pricePer20Min; // vehicles.rate_per_block
-  final String status; // 'Available' | 'Rented' | 'Maintenance'
+  final double lateRatePer20Min; // vehicles.late_rate_per_block
+  final String status; // 'Available' | 'Rented' | 'Maintenance' | 'Not in use'
   final String? photoUrl;
 
   const Vehicle({
     required this.id,
     required this.type,
     required this.pricePer20Min,
+    double? lateRatePer20Min,
     required this.status,
     this.photoUrl,
-  });
+  }) : lateRatePer20Min = lateRatePer20Min ?? pricePer20Min;
 
-  String get name => '$type $id'; // e.g. "Bicycle BK-01"
+  String get name =>
+      id.toLowerCase().startsWith(type.toLowerCase()) ? id : '$type $id';
   bool get isAvailable => status == 'Available';
   String get typeLabel => type;
   String get statusLabel => switch (status) {
         'Available' => 'Available',
         'Rented' => 'Rented',
+        'Not in use' => 'Not in use',
         _ => 'Under maintenance',
       };
   String get priceLabel => 'RM ${pricePer20Min.toStringAsFixed(2)}';
+  String get latePriceLabel => 'RM ${lateRatePer20Min.toStringAsFixed(2)}';
 
-  factory Vehicle.fromMap(Map<String, dynamic> m) => Vehicle(
-        id: m['id'] as String,
-        type: m['type'] as String,
-        pricePer20Min: (m['rate_per_block'] as num).toDouble(),
-        status: m['status'] as String,
-        photoUrl: m['photo_url'] as String?,
-      );
+  factory Vehicle.fromMap(Map<String, dynamic> m) {
+    final rate = (m['rate_per_block'] as num).toDouble();
+    final lateRaw = m['late_rate_per_block'];
+    return Vehicle(
+      id: m['id'] as String,
+      type: m['type'] as String,
+      pricePer20Min: rate,
+      lateRatePer20Min: lateRaw != null ? (lateRaw as num).toDouble() : rate,
+      status: m['status'] as String,
+      photoUrl: m['photo_url'] as String?,
+    );
+  }
 }
 
 enum VehicleSort { lowestPrice, name }
