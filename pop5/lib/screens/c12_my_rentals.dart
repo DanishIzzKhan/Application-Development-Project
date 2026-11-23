@@ -6,7 +6,6 @@ import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'c3_vehicles.dart';
-import 'c7_waiting_for_payment.dart';
 import 'c8_receipt.dart';
 import 'c9_active_rental.dart';
 import 'c12b_booking_pass.dart';
@@ -137,21 +136,9 @@ class _MyRentalsScreenState extends State<MyRentalsScreen> {
     final id = booking['id'].toString();
     final status = (booking['status'] ?? '').toString();
 
-    if (status == 'pending_payment') {
-      final paid = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => WaitingPaymentScreen(bookingId: id)),
-      );
-      if (paid == true && mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => ReceiptScreen(bookingId: id)),
-        );
-      }
-      if (mounted) _load();
-      return;
-    }
-
-    if (status == 'ready') {
-      // Paid, waiting for the owner to hand over the vehicle: show the QR pass.
+    if (status == 'pending_payment' || status == 'ready') {
+      // Waiting for the counter payment, or paid and waiting for handover:
+      // show the QR pass (it updates by itself when the owner confirms).
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => BookingPassScreen(rentalId: id)),
       );

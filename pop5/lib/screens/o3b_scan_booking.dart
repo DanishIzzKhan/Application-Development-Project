@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../models/rental.dart';
+import '../services/owner_api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
+import 'o5b_start_rental_live.dart';
 
 /// O3b Scan booking — opened from "Scan booking QR" on O3.
 ///
@@ -66,7 +68,12 @@ class _ScanBookingScreenState extends State<ScanBookingScreen> {
     final rental = widget.rentals
         .where((r) => r.qrToken != null && r.qrToken == value)
         .firstOrNull;
-    _open(rental, notFoundLine: 'This QR is not an ISYGEAR booking.');
+    if (rental != null) {
+      _open(rental, notFoundLine: 'This QR is not an ISYGEAR booking.');
+    } else {
+      _openFromDatabase(value,
+          notFoundLine: 'This QR is not an ISYGEAR booking.');
+    }
     // Let the owner try another QR after the message has been read.
     Future.delayed(const Duration(seconds: 2), () => _busy = false);
   }
@@ -77,7 +84,12 @@ class _ScanBookingScreenState extends State<ScanBookingScreen> {
     final code = _code.text.trim().toUpperCase();
     final rental =
         widget.rentals.where((r) => r.bookingCode == code).firstOrNull;
-    _open(rental, notFoundLine: 'Check the code $code and try again.');
+    if (rental != null) {
+      _open(rental, notFoundLine: 'Check the code $code and try again.');
+    } else {
+      _openFromDatabase(code,
+          notFoundLine: 'Check the code $code and try again.');
+    }
   }
 
   /// Tap on the grey "Find booking" button.
@@ -89,6 +101,50 @@ class _ScanBookingScreenState extends State<ScanBookingScreen> {
           "It's under the QR on the customer's booking.",
         ],
         type: NoticeType.error);
+  }
+
+  /// Looks the booking up in Supabase (real bookings made in the customer app).
+  /// If it can be handed over, Start rental opens for it.
+  Future<void> _openFromDatabase(String value,
+      {required String notFoundLine}) async {
+    try {
+      final found = await OwnerApi.findRental(value);
+      if (!mounted) return;
+      if (found == null) {
+        showTopNotice(context,
+            title: 'No booking found',
+            lines: [notFoundLine],
+            type: NoticeType.error);
+        return;
+      }
+      switch (found['status'] as String) {
+        case 'pending_payment':
+        case 'ready':
+        case 'checked_in':
+          await Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (_) =>
+                StartRentalLiveScreen(rentalId: found['id'] as String),
+          ));
+        case 'active':
+        case 'completed':
+          showTopNotice(context,
+              title: 'This booking has already started',
+              lines: ['Find it under Active on Rentals.'],
+              type: NoticeType.error);
+        default: // 'cancelled', 'expired'
+          showTopNotice(context,
+              title: 'This booking is cancelled or expired',
+              lines: ['Ask the customer to make a new booking.'],
+              type: NoticeType.error);
+      }
+    } catch (e) {
+      if (mounted) {
+        showTopNotice(context,
+            title: "Couldn't check the booking",
+            lines: ['$e'],
+            type: NoticeType.error);
+      }
+    }
   }
 
   /// Closes with [rental] if it can be handed over, otherwise explains why not.

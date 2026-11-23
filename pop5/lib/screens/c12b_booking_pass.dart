@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -5,8 +7,13 @@ import '../models/active_rental.dart';
 import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'c9_active_rental.dart';
 
 /// C12b Booking pass: the QR the owner scans at the counter (rentals.qr_token).
+///
+/// It checks the booking every 3 seconds:
+///   waiting for payment -> the owner confirms the payment -> PAID
+///   the owner starts the rental -> this opens the active rental screen (C9).
 class BookingPassScreen extends StatefulWidget {
   final String rentalId;
   const BookingPassScreen({super.key, required this.rentalId});
@@ -19,29 +26,49 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
   Map<String, dynamic>? _row;
   String? _error;
   bool _loading = true;
+  Timer? _poll;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _poll = Timer.periodic(
+        const Duration(seconds: 3), (_) => _load(silent: true));
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final row = await supabase
           .from('rentals')
           .select('*, vehicles(id, type)')
           .eq('id', widget.rentalId)
           .single();
-      if (mounted) setState(() => _row = row);
+      if (!mounted) return;
+      final status = row['status'] as String;
+      if (status == 'active' || status == 'checked_in') {
+        // The owner started the rental: switch to the countdown screen.
+        _poll?.cancel();
+        Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (_) => ActiveRentalScreen(bookingId: widget.rentalId)));
+        return;
+      }
+      setState(() => _row = row);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (!silent && mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (!silent && mounted) setState(() => _loading = false);
     }
   }
 
@@ -74,6 +101,34 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
     );
   }
 
+  Widget _banner(IconData icon, String bold, String rest) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.dark, width: 2),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: inter(14),
+                children: [
+                  TextSpan(text: bold, style: inter(14, weight: FontWeight.w700)),
+                  TextSpan(text: rest),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _content(Map<String, dynamic> row) {
     final r = ActiveRental.fromMap(row);
     final qr = row['qr_token'] as String;
@@ -94,11 +149,19 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
 
     return FormScroll(
       children: [
+        if (!paid)
+          _banner(Icons.storefront_outlined,
+              'Pay RM ${r.total.toStringAsFixed(2)} at the counter.',
+              ' Show this QR to the shop. They confirm your payment and start your rental.')
+        else
+          _banner(Icons.check_circle_outline, 'Payment confirmed.',
+              ' Show this QR at the counter to collect your vehicle.'),
+        const SizedBox(height: 14),
         Text('Show this at the counter',
             textAlign: TextAlign.center,
             style: inter(18, weight: FontWeight.w700)),
         const SizedBox(height: 6),
-        Text('The shop scans it to hand over your vehicle.',
+        Text('The shop scans it to find your booking.',
             textAlign: TextAlign.center,
             style: inter(13, color: AppColors.text2)),
         const SizedBox(height: 16),
@@ -136,6 +199,10 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
               detail(
                   'Duration',
                   Text('${mins ~/ 60} hr ${mins % 60} min',
+                      style: inter(14, weight: FontWeight.w600))),
+              const SizedBox(height: 8),
+              detail('Total',
+                  Text('RM ${r.total.toStringAsFixed(2)}',
                       style: inter(14, weight: FontWeight.w600))),
               const SizedBox(height: 8),
               detail(
