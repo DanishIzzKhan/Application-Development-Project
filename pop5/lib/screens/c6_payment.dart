@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'c7_waiting_for_payment.dart';
 import 'c8_receipt.dart';
+import 'c12b_booking_pass.dart';
 
 enum PayMethod { touchNGo, duitNow, counter }
 
@@ -64,6 +65,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
       if (!mounted) return;
 
+      // Cash / QR at the counter: show the booking pass (QR) to the owner.
+      // The owner confirms the payment and starts the rental from the pass.
+      if (_method == PayMethod.counter) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => BookingPassScreen(rentalId: id)),
+        );
+        // The pass may already have opened the active rental or been replaced.
+        if (!mounted || route?.isCurrent != true) return;
+        Navigator.of(context).pop(true);
+        return;
+      }
+
       final paid = kSkipPaymentWait
           ? true
           : await Navigator.of(context).push<bool>(
@@ -78,7 +91,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
         // C8 "Done" pops straight back to the first screen, which already closes
         // this screen. Popping again here would remove the home screen too.
-        if (!mounted || route?.isActive != true) return;
+        if (!mounted || route?.isCurrent != true) return;
       }
       Navigator.of(context).pop(true);
     } on PostgrestException catch (e) {
