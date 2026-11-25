@@ -327,6 +327,38 @@ class Api {
     await supabase.auth.signOut();
   }
 
+  // ---------- O16 shop settings (ADP-138) ----------
+
+  static Future fetchShopSettings() => _orPreview(() async {
+        final row = await supabase
+            .from('shop_settings')
+            .select()
+            .eq('id', 1)
+            .maybeSingle();
+        if (row == null) return _sampleShopSettings;
+        return Map.from(row);
+      }, () => _sampleShopSettings);
+
+  static Future<void> updateShopSettings(Map<String, dynamic> updates) =>
+      _orPreview(() async {
+        await supabase.from('shop_settings').update({
+          ...updates,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        }).eq('id', 1);
+      }, () {});
+
+  static Map get _sampleShopSettings => {
+        'id': 1,
+        'default_rate': 8.00,
+        'grace_minutes': 5,
+        'late_rate': 10.00,
+        'auto_charge_limit': 3,
+        'auto_charge_late': true,
+        'notify_overdue': true,
+        'notify_leaves_park': true,
+        'notify_lost_signal': true,
+      };
+
   // ---------- sample data (preview mode only) ----------
 
   static const _sample = [
