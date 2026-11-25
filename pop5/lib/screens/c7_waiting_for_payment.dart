@@ -1,48 +1,75 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../services/hitpay_api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
- 
+
+/// C7 Waiting for payment. Opened after the HitPay payment page was opened.
+/// Every 4 seconds it asks the server if HitPay confirmed the payment (the webhook
+/// normally does it first), then reads the booking status.
+/// Pops with true when paid, false when the customer cancels.
 class WaitingPaymentScreen extends StatefulWidget {
-  final String bookingId;
-  const WaitingPaymentScreen({super.key, required this.bookingId});
- 
+  final String bookingId; // rentals.id
+  final String paymentMethod; // 'TnG' | 'Bank QR' | 'Card' (used when retrying)
+  final String? checkoutUrl; // HitPay page link, to open it again
+
+  const WaitingPaymentScreen({
+    super.key,
+    required this.bookingId,
+    this.paymentMethod = 'TnG',
+    this.checkoutUrl,
+  });
+
   @override
   State<WaitingPaymentScreen> createState() => _WaitingPaymentScreenState();
 }
- 
+
 class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
   bool _isChecking = true;
   bool _isFailed = false;
+  bool _busy = false;
+  String? _checkoutUrl;
   String _statusMessage =
-      'Please complete the payment on your gateway app. We are waiting for confirmation...';
+      'Complete the payment on the HitPay page. This screen updates by itself when it is confirmed.';
   Timer? _pollTimer;
- 
+  bool _polling = false; // one check at a time
+
   @override
   void initState() {
     super.initState();
+    _checkoutUrl = widget.checkoutUrl;
     _startPaymentPolling();
   }
- 
+
   @override
   void dispose() {
     _pollTimer?.cancel();
     super.dispose();
   }
- 
+
   void _startPaymentPolling() {
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+      if (_polling) return;
+      _polling = true;
       try {
+        // Ask HitPay (through the server) first; ignore errors and try again next time.
+        try {
+          await HitpayApi.checkPayment(widget.bookingId);
+        } catch (_) {}
+
         final response = await Supabase.instance.client
             .from('rentals')
             .select('status')
             .eq('id', widget.bookingId)
             .single();
- 
+
         final status = response['status'] as String?;
         if (!mounted) return;
- 
+
         // 'ready' = paid, waiting for handover; later statuses also mean paid.
         if (status == 'ready' ||
             status == 'checked_in' ||
@@ -62,21 +89,50 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
                 'Payment failed or was cancelled. Please try again.';
           });
         }
-      } catch (e) {
-        // Silent catch during polling interval
+      } catch (_) {
+        // Silent during the polling interval.
+      } finally {
+        _polling = false;
       }
     });
   }
- 
-  Future<void> _retryPayment() async {
-    setState(() {
-      _isChecking = true;
-      _isFailed = false;
-      _statusMessage = 'Retrying payment verification...';
-    });
-    _startPaymentPolling();
+
+  Future<void> _openPaymentPage() async {
+    final url = _checkoutUrl;
+    if (url == null) {
+      await _retryPayment();
+      return;
+    }
+    try {
+      await HitpayApi.openCheckout(url);
+    } catch (e) {
+      if (mounted) showToast(context, '$e');
+    }
   }
- 
+
+  /// Creates a new HitPay payment request and opens it.
+  Future<void> _retryPayment() async {
+    setState(() => _busy = true);
+    try {
+      final url = await HitpayApi.createPayment(
+          rentalId: widget.bookingId, method: widget.paymentMethod);
+      await HitpayApi.openCheckout(url);
+      if (!mounted) return;
+      setState(() {
+        _checkoutUrl = url;
+        _isChecking = true;
+        _isFailed = false;
+        _statusMessage =
+            'Complete the payment on the HitPay page. This screen updates by itself when it is confirmed.';
+      });
+      _startPaymentPolling();
+    } catch (e) {
+      if (mounted) showToast(context, 'Could not open the payment page: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _cancelBooking() async {
     try {
       await Supabase.instance.client
@@ -85,7 +141,7 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
     } catch (_) {}
     if (mounted) Navigator.of(context).pop(false);
   }
- 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -131,17 +187,26 @@ class _WaitingPaymentScreenState extends State<WaitingPaymentScreen> {
               const SizedBox(height: 8),
               Text(
                 _isChecking
-                    ? 'Booking ID: ${widget.bookingId.substring(0, 8)}\n\n$_statusMessage'
+                    ? 'Booking ${widget.bookingId}\n\n$_statusMessage'
                     : _isFailed
                         ? _statusMessage
                         : 'Your payment has been verified and confirmed. You can now proceed to collect your vehicle.',
                 style: inter(14, color: AppColors.text2),
                 textAlign: TextAlign.center,
               ),
+              if (_isChecking) ...[
+                const SizedBox(height: 14),
+                TextButton(
+                  onPressed: _busy ? null : _openPaymentPage,
+                  child: Text('Open the payment page again',
+                      style: inter(14, weight: FontWeight.w600)),
+                ),
+              ],
               const Spacer(),
               if (_isFailed) ...[
                 PrimaryButton(
                   label: 'Retry Payment',
+                  loading: _busy,
                   onPressed: _retryPayment,
                 ),
                 const SizedBox(height: 12),
