@@ -238,6 +238,44 @@ class Api {
         return rows.length;
       }, () => 2);
 
+  // ---------- O8 owner alerts ----------
+
+  static Future<List<dynamic>> fetchOwnerAlerts() =>
+      _orPreview<List<dynamic>>(() async {
+        final uid = supabase.auth.currentUser?.id;
+        if (uid == null) return [];
+        final rows = await supabase
+            .from('notifications')
+            .select()
+            .eq('user_id', uid)
+            .order('created_at', ascending: false);
+        return List<dynamic>.from(rows);
+      }, () => _sampleOwnerAlerts);
+
+  static Future<void> markNotificationRead(String id) =>
+      _orPreview<void>(() async {
+        await supabase.from('notifications').update(
+            {'read_at': DateTime.now().toUtc().toIso8601String()}).eq('id', id);
+      }, () {});
+
+  static Future<void> markAllNotificationsRead() => _orPreview<void>(() async {
+        final uid = supabase.auth.currentUser?.id;
+        if (uid == null) return;
+        await supabase
+            .from('notifications')
+            .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+            .eq('user_id', uid)
+            .isFilter('read_at', null);
+      }, () {});
+
+  static Future<void> markNotificationsUnread(List<String> ids) =>
+      _orPreview<void>(() async {
+        if (ids.isEmpty) return;
+        await supabase
+            .from('notifications')
+            .update({'read_at': null}).inFilter('id', ids);
+      }, () {});
+
   // ---------- C5 booking ----------
 
   static Future<ShopRules> fetchShopRules() => _orPreview<ShopRules>(() async {
@@ -327,6 +365,41 @@ class Api {
       lateRatePer20Min: 5,
       status: 'Available',
     ),
+  ];
+
+  static final List<dynamic> _sampleOwnerAlerts = [
+    {
+      'id': 'sample-1',
+      'title': 'Auto-charge failed',
+      'body': 'Scooter S02 · card declined · collect RM 10.00 at return',
+      'type': 'payment_failed',
+      'is_urgent': true,
+      'read_at': null,
+      'created_at':
+          DateTime.now().subtract(const Duration(minutes: 2)).toIso8601String(),
+    },
+    {
+      'id': 'sample-2',
+      'title': '3 late charges · not returned',
+      'body': 'Bicycle B03 · 1 hr late · auto-charging stopped',
+      'type': 'late_charge',
+      'is_urgent': true,
+      'read_at': null,
+      'created_at': DateTime.now()
+          .subtract(const Duration(minutes: 12))
+          .toIso8601String(),
+    },
+    {
+      'id': 'sample-3',
+      'title': 'Left Kulai Park',
+      'body': 'Scooter S02 · ahmad_rides is outside the park boundary',
+      'type': 'geofence',
+      'is_urgent': true,
+      'read_at': null,
+      'created_at': DateTime.now()
+          .subtract(const Duration(minutes: 18))
+          .toIso8601String(),
+    },
   ];
 
   static List<Vehicle> _sampleVehicles(VehicleFilter f) {
