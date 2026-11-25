@@ -41,6 +41,22 @@ class OwnerRental {
   /// O6 uses it as the actual return time. Null = not back yet.
   final DateTime? returnedAt;
 
+  // ---------- Only for bookings loaded from Supabase ----------
+
+  /// True = this booking is a row in the `rentals` table (real data).
+  /// False = sample data or a walk-in only kept in the app for now.
+  final bool fromDatabase;
+  final String? customerId; // rentals.customer_id (app customers)
+
+  /// Storage paths of the IC photos in the private ic-documents bucket:
+  /// the app customer's (users.ic_front_path / ic_back_path) or the
+  /// walk-in's (rentals.walk_in_ic_front_path / walk_in_ic_back_path).
+  final String? icFrontPath;
+  final String? icBackPath;
+
+  /// rentals.late_blocks_charged: late blocks really auto-charged so far.
+  final int lateBlocksCharged;
+
   const OwnerRental({
     required this.id,
     required this.bookingCode,
@@ -63,7 +79,75 @@ class OwnerRental {
     this.walkInPhone,
     this.paymentMethod,
     this.returnedAt,
+    this.fromDatabase = false,
+    this.customerId,
+    this.icFrontPath,
+    this.icBackPath,
+    this.lateBlocksCharged = 0,
   });
+
+  /// One row of `rentals` from Supabase, joined with `vehicles(id, type)` and
+  /// `users(username, full_name, ic_front_path, ic_back_path)`.
+  /// [upfront] is the booking's completed upfront payment, if any
+  /// (payment_method, gateway_ref): a gateway_ref means it was paid online.
+  factory OwnerRental.fromMap(Map<String, dynamic> m,
+      {Map<String, dynamic>? upfront}) {
+    final v = m['vehicles'] as Map?;
+    final u = m['users'] as Map?;
+    final walkIn = m['is_walk_in'] == true;
+    final status = m['status'] as String;
+    final rate = (m['rate_per_block_at_booking'] as num).toDouble();
+    final lateRate = (m['late_rate_at_booking'] as num?)?.toDouble() ?? 0;
+    DateTime? time(String key) =>
+        m[key] == null ? null : DateTime.parse(m[key] as String).toLocal();
+
+    final frontPath = walkIn
+        ? m['walk_in_ic_front_path'] as String?
+        : u?['ic_front_path'] as String?;
+    final backPath = walkIn
+        ? m['walk_in_ic_back_path'] as String?
+        : u?['ic_back_path'] as String?;
+
+    return OwnerRental(
+      id: m['id'] as String,
+      bookingCode: (m['booking_code'] as String).toUpperCase(),
+      qrToken: m['qr_token'] as String?,
+      vehicleName: _vehicleName(v),
+      customerName: walkIn
+          ? 'Walk-in: ${m['walk_in_name'] ?? 'customer'}'
+          : (u?['username'] ?? u?['full_name'] ?? 'customer').toString(),
+      isWalkIn: walkIn,
+      status: status,
+      blocksBooked: (m['blocks_booked'] as num).toInt(),
+      ratePerBlock: rate,
+      // Locked in when the rental starts; before that, the normal price.
+      lateRatePerBlock: lateRate > 0 ? lateRate : rate,
+      isPaid: status != 'pending_payment',
+      paidOnline: upfront?['gateway_ref'] != null,
+      paymentMethod: upfront?['payment_method'] as String?,
+      scheduledStart: time('scheduled_start_time')!,
+      scheduledEnd: time('scheduled_end_time')!,
+      depositNote: m['deposit_note'] as String?,
+      walkInPhone: m['walk_in_phone'] as String?,
+      walkInIcPhotoTaken: walkIn && (frontPath != null || backPath != null),
+      // "Returned" saves actual_end_time while the rental is still active.
+      returnedAt: status == 'active' ? time('actual_end_time') : null,
+      fromDatabase: true,
+      customerId: m['customer_id'] as String?,
+      icFrontPath: frontPath,
+      icBackPath: backPath,
+      lateBlocksCharged: (m['late_blocks_charged'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// Same naming as Vehicle.name: "Scooter S01", or just the id when it
+  /// already starts with the type.
+  static String _vehicleName(Map? v) {
+    if (v == null) return 'Vehicle';
+    final id = '${v['id']}';
+    final type = '${v['type']}';
+    return id.toLowerCase().startsWith(type.toLowerCase()) ? id : '$type $id';
+  }
 
   bool get isReturned => returnedAt != null;
 
@@ -147,12 +231,15 @@ class OwnerRental {
   /// Late blocks already auto-charged to the saved card by [now].
   /// Walk-ins have no saved card, so nothing is auto-charged.
   /// Auto-charging stops once the owner taps "Returned".
+  /// Real bookings: rentals.late_blocks_charged from the database.
   /// Sample data: assumes the auto-charge ran on time.
-  /// Later: rentals.late_blocks_charged from the database.
-  int autoChargedBlocks(DateTime now) =>
-      isWalkIn ? 0 : lateBlocks(returnedAt ?? now);
+  int autoChargedBlocks(DateTime now) {
+    if (isWalkIn) return 0;
+    if (fromDatabase) return lateBlocksCharged;
+    return lateBlocks(returnedAt ?? now);
+  }
 
-  // ---------- Status changes (sample data only, until Api exists) ----------
+  // ---------- Status changes kept in the app (sample data / walk-ins) ----------
 
   /// Copy of this rental after the owner taps "Returned" on O3.
   OwnerRental markedReturned(DateTime at) => OwnerRental(
@@ -177,6 +264,11 @@ class OwnerRental {
         walkInPhone: walkInPhone,
         paymentMethod: paymentMethod,
         returnedAt: at,
+        fromDatabase: fromDatabase,
+        customerId: customerId,
+        icFrontPath: icFrontPath,
+        icBackPath: icBackPath,
+        lateBlocksCharged: lateBlocksCharged,
       );
 
   /// Copy of this rental after the owner taps "Start rental" on O5:
@@ -202,6 +294,11 @@ class OwnerRental {
         walkInIcBack: walkInIcBack,
         walkInPhone: walkInPhone,
         paymentMethod: paymentMethod,
+        fromDatabase: fromDatabase,
+        customerId: customerId,
+        icFrontPath: icFrontPath,
+        icBackPath: icBackPath,
+        lateBlocksCharged: lateBlocksCharged,
       );
 }
 

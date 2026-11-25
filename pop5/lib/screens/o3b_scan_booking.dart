@@ -8,7 +8,6 @@ import '../services/owner_api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
-import 'o5b_start_rental_live.dart';
 
 /// O3b Scan booking — opened from "Scan booking QR" on O3.
 ///
@@ -17,10 +16,10 @@ import 'o5b_start_rental_live.dart';
 /// the owner types the 8-character `booking_code` instead (e.g. 3F9A1C2B).
 ///
 /// When a booking that can be handed over is found, this screen closes and
-/// returns it, and O3 opens Start rental for it.
+/// returns it, and O3 opens Start rental (O5) for it.
 ///
-/// Sample data for now: it searches the [rentals] O3 already has.
-/// Later: Api.findRentalByQr(token) / Api.findRentalByCode(code).
+/// It first searches the [rentals] O3 already shows; if the booking isn't
+/// there, it looks it up in Supabase (OwnerApi.findRental).
 class ScanBookingScreen extends StatefulWidget {
   final List<OwnerRental> rentals;
   const ScanBookingScreen({super.key, required this.rentals});
@@ -121,10 +120,9 @@ class _ScanBookingScreenState extends State<ScanBookingScreen> {
         case 'pending_payment':
         case 'ready':
         case 'checked_in':
-          await Navigator.of(context).pushReplacement(MaterialPageRoute(
-            builder: (_) =>
-                StartRentalLiveScreen(rentalId: found['id'] as String),
-          ));
+          // Load the full booking and let O3 open Start rental for it.
+          final rental = await OwnerApi.fetchRental(found['id'] as String);
+          if (mounted) Navigator.of(context).pop(rental);
         case 'active':
         case 'completed':
           showTopNotice(context,
@@ -138,10 +136,11 @@ class _ScanBookingScreenState extends State<ScanBookingScreen> {
               type: NoticeType.error);
       }
     } catch (e) {
+      debugPrint('Scan booking: lookup failed. $e');
       if (mounted) {
         showTopNotice(context,
             title: "Couldn't check the booking",
-            lines: ['$e'],
+            lines: ['Check your internet connection and try again.'],
             type: NoticeType.error);
       }
     }
@@ -332,11 +331,12 @@ class _ScanBookingScreenState extends State<ScanBookingScreen> {
               LengthLimitingTextInputFormatter(_codeLength),
               _UpperCase(),
             ],
-            style: inter(18, weight: FontWeight.w600).copyWith(letterSpacing: 3),
+            style:
+                inter(18, weight: FontWeight.w600).copyWith(letterSpacing: 3),
             decoration: InputDecoration(
               hintText: '3F9A1C2B',
-              hintStyle: inter(18, color: AppColors.hint)
-                  .copyWith(letterSpacing: 3),
+              hintStyle:
+                  inter(18, color: AppColors.hint).copyWith(letterSpacing: 3),
               counterText: '',
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
