@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/rental.dart';
+import '../services/owner_api.dart';
 import '../theme.dart';
 import '../widgets/rental_widgets.dart';
 import 'o3b_scan_booking.dart';
@@ -9,6 +11,9 @@ import 'o5_start_rental.dart';
 import 'o6_end_rental.dart';
 
 /// O3 Rentals — the "Rentals" tab inside OwnerShell (bottom bar comes from the shell).
+///
+/// Shows real bookings from Supabase (OwnerApi.fetchOpenRentals). Pull down
+/// to refresh. Walk-ins made on O4 are kept in the app until O4 saves them.
 class RentalsScreen extends StatefulWidget {
   const RentalsScreen({super.key});
 
@@ -17,11 +22,55 @@ class RentalsScreen extends StatefulWidget {
 }
 
 class _RentalsScreenState extends State<RentalsScreen> {
-  // Sample data for now (AppConfig.uiPreviewMode). Later: Api + Realtime.
-  late List<OwnerRental> _rentals = sampleOwnerRentals();
+  /// Bookings loaded from Supabase.
+  List<OwnerRental> _dbRentals = [];
 
-  List<OwnerRental> _withStatus(String s) =>
-      _rentals.where((r) => r.status == s).toList();
+  /// Only in the app: walk-ins from O4 (not saved yet), or the sample
+  /// rentals when AppConfig.uiPreviewMode is on.
+  List<OwnerRental> _appOnly =
+      AppConfig.uiPreviewMode ? sampleOwnerRentals() : [];
+
+  bool _loading = !AppConfig.uiPreviewMode;
+  bool _loadFailed = false;
+
+  List<OwnerRental> get _rentals => [..._dbRentals, ..._appOnly];
+
+  List<OwnerRental> _withStatus(List<String> statuses) =>
+      _rentals.where((r) => statuses.contains(r.status)).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    if (!AppConfig.uiPreviewMode) _load();
+  }
+
+  /// (Re)loads the bookings from Supabase.
+  Future<void> _load() async {
+    setState(() => _loadFailed = false);
+    try {
+      final rows = await OwnerApi.fetchOpenRentals();
+      if (!mounted) return;
+      setState(() {
+        _dbRentals = rows;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('Rentals: could not load bookings. $e');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadFailed = true;
+        });
+      }
+    }
+  }
+
+  /// Replaces one app-only rental (walk-in / sample) with [update].
+  void _updateAppOnly(String id, OwnerRental Function(OwnerRental) update) {
+    setState(() {
+      _appOnly = [for (final r in _appOnly) r.id == id ? update(r) : r];
+    });
+  }
 
   /// Opens O5. If the owner tapped "Start rental", O5 returns true and the
   /// row moves from "Waiting"/"Ready" to "Active".
@@ -29,13 +78,11 @@ class _RentalsScreenState extends State<RentalsScreen> {
     final started = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => StartRentalScreen(rental: rental)),
     );
-    if (started == true && mounted) {
-      setState(() {
-        _rentals = [
-          for (final r in _rentals)
-            r.id == rental.id ? r.startedAt(DateTime.now()) : r,
-        ];
-      });
+    if (started != true || !mounted) return;
+    if (rental.fromDatabase) {
+      await _load(); // the database now says 'active'
+    } else {
+      _updateAppOnly(rental.id, (r) => r.startedAt(DateTime.now()));
     }
   }
 
@@ -46,20 +93,33 @@ class _RentalsScreenState extends State<RentalsScreen> {
       MaterialPageRoute(builder: (_) => const WalkInBookingScreen()),
     );
     if (rental == null || !mounted) return;
-    setState(() => _rentals = [..._rentals, rental]);
+    setState(() => _appOnly = [..._appOnly, rental]);
     await _openStart(rental);
   }
 
   /// One tap the moment the vehicle physically arrives: saves the time,
   /// stops further late charges, and lets the owner do O6 later.
-  void _markReturned(OwnerRental rental) {
-    // Later: Api.markReturned(rental.id) saves the time in the database.
+  Future<void> _markReturned(OwnerRental rental) async {
     final at = DateTime.now();
-    setState(() {
-      _rentals = [
-        for (final r in _rentals) r.id == rental.id ? r.markedReturned(at) : r,
-      ];
-    });
+    if (rental.fromDatabase) {
+      try {
+        await OwnerApi.markReturned(rental.id); // owner_mark_returned
+      } catch (e) {
+        debugPrint('Returned failed: $e');
+        if (mounted) {
+          showTopNotice(context,
+              title: "Couldn't save the return time",
+              lines: ['Check your internet connection and try again.'],
+              type: NoticeType.error);
+        }
+        return;
+      }
+      if (!mounted) return;
+      await _load();
+    } else {
+      _updateAppOnly(rental.id, (r) => r.markedReturned(at));
+    }
+    if (!mounted) return;
     showTopNotice(context,
         title: '${rental.vehicleName} back at ${formatClock(at)}',
         lines: ['Tap End when you are ready to check it.'],
@@ -73,8 +133,12 @@ class _RentalsScreenState extends State<RentalsScreen> {
       MaterialPageRoute(builder: (_) => EndRentalScreen(rental: rental)),
     );
     if (ended == true && mounted) {
-      setState(
-          () => _rentals = _rentals.where((r) => r.id != rental.id).toList());
+      // End rental is not saved in the database yet (next step), so the
+      // row is only hidden until the list is refreshed.
+      setState(() {
+        _dbRentals = _dbRentals.where((r) => r.id != rental.id).toList();
+        _appOnly = _appOnly.where((r) => r.id != rental.id).toList();
+      });
     }
   }
 
@@ -88,12 +152,40 @@ class _RentalsScreenState extends State<RentalsScreen> {
     await _openStart(rental);
   }
 
+  /// Shown instead of the three lists while loading or after an error.
+  Widget? _status() {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(child: CircularProgressIndicator(color: AppColors.dark)),
+      );
+    }
+    if (_loadFailed && _dbRentals.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32),
+        child: Column(
+          children: [
+            Text("Couldn't load bookings",
+                style: inter(15, weight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text('Check your internet connection.',
+                style: inter(13, color: AppColors.text2)),
+            const SizedBox(height: 12),
+            SmallButton(label: 'Try again', onPressed: _load),
+          ],
+        ),
+      );
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final waiting = _withStatus('pending_payment');
-    final ready = _withStatus('ready');
-    final active = _withStatus('active');
+    final waiting = _withStatus(['pending_payment']);
+    final ready = _withStatus(['ready', 'checked_in']);
+    final active = _withStatus(['active']);
+    final status = _status();
 
     return Scaffold(
       appBar: AppBar(
@@ -120,80 +212,88 @@ class _RentalsScreenState extends State<RentalsScreen> {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          SizedBox(
-            height: 48,
-            child: FilledButton.icon(
-              onPressed: _openScan, // O3b
-              icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
-              label: Text('Scan booking QR',
-                  style:
-                      inter(15, weight: FontWeight.w600, color: Colors.white)),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.dark,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+      body: RefreshIndicator(
+        color: AppColors.dark,
+        onRefresh: AppConfig.uiPreviewMode ? () async {} : _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          children: [
+            SizedBox(
+              height: 48,
+              child: FilledButton.icon(
+                onPressed: _openScan, // O3b
+                icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                label: Text('Scan booking QR',
+                    style: inter(15,
+                        weight: FontWeight.w600, color: Colors.white)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.dark,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
+            if (status != null)
+              status
+            else ...[
+              // ---- Waiting for payment -> O5 ----
+              const SectionTitle('Waiting for payment'),
+              for (final r in waiting)
+                _RentalRow(
+                  title: r.title,
+                  subtitle: 'Pay at counter · ${r.totalLabel}',
+                  button: SmallButton(
+                      label: 'Open', onPressed: () => _openStart(r)),
+                  onTap: () => _openStart(r),
+                ),
+              if (waiting.isEmpty) const _EmptyRow(),
+              const SizedBox(height: 20),
 
-          // ---- Waiting for payment -> O5 ----
-          const SectionTitle('Waiting for payment'),
-          for (final r in waiting)
-            _RentalRow(
-              title: r.title,
-              subtitle: 'Pay at counter · ${r.totalLabel}',
-              button:
-                  SmallButton(label: 'Open', onPressed: () => _openStart(r)),
-              onTap: () => _openStart(r),
-            ),
-          if (waiting.isEmpty) const _EmptyRow(),
-          const SizedBox(height: 20),
+              // ---- Ready for handover -> O5 ----
+              const SectionTitle('Ready for handover'),
+              for (final r in ready)
+                _RentalRow(
+                  title: r.title,
+                  subtitle:
+                      '${r.paidOnline ? 'Paid online' : 'Paid at counter'} · ${r.durationLabel}',
+                  button: SmallButton(
+                      label: 'Start', onPressed: () => _openStart(r)),
+                  onTap: () => _openStart(r),
+                ),
+              if (ready.isEmpty) const _EmptyRow(),
+              const SizedBox(height: 20),
 
-          // ---- Ready for handover -> O5 ----
-          const SectionTitle('Ready for handover'),
-          for (final r in ready)
-            _RentalRow(
-              title: r.title,
-              subtitle:
-                  '${r.paidOnline ? 'Paid online' : 'Paid at counter'} · ${r.durationLabel}',
-              button:
-                  SmallButton(label: 'Start', onPressed: () => _openStart(r)),
-              onTap: () => _openStart(r),
-            ),
-          if (ready.isEmpty) const _EmptyRow(),
-          const SizedBox(height: 20),
-
-          // ---- Active -> O6 (not built yet) ----
-          const SectionTitle('Active'),
-          for (final r in active)
-            _RentalRow(
-              title: r.title,
-              subtitle: _activeLine(r, now),
-              badge: r.isReturned
-                  ? const RentalBadge('RETURNED', filled: false)
-                  : (r.isWalkIn && r.minutesLate(now) > 0
-                      ? const RentalBadge('OVERDUE')
-                      : null),
-              // Step 1: "Returned" the moment the vehicle arrives (saves the time).
-              // Step 2: "End" to check condition and charges on O6.
-              button: r.isReturned
-                  ? SmallButton(
-                      label: 'End',
-                      onPressed: () => _openEnd(r), // O6
-                    )
-                  : SmallButton(
-                      label: 'Returned',
-                      primary: false,
-                      onPressed: () => _markReturned(r),
-                    ),
-              onTap: () => _openEnd(r), // O6
-            ),
-          if (active.isEmpty) const _EmptyRow(),
-        ],
+              // ---- Active -> O6 ----
+              const SectionTitle('Active'),
+              for (final r in active)
+                _RentalRow(
+                  title: r.title,
+                  subtitle: _activeLine(r, now),
+                  badge: r.isReturned
+                      ? const RentalBadge('RETURNED', filled: false)
+                      : (r.isWalkIn && r.minutesLate(now) > 0
+                          ? const RentalBadge('OVERDUE')
+                          : null),
+                  // Step 1: "Returned" the moment the vehicle arrives (saves the time).
+                  // Step 2: "End" to check condition and charges on O6.
+                  button: r.isReturned
+                      ? SmallButton(
+                          label: 'End',
+                          onPressed: () => _openEnd(r), // O6
+                        )
+                      : SmallButton(
+                          label: 'Returned',
+                          primary: false,
+                          onPressed: () => _markReturned(r),
+                        ),
+                  onTap: () => _openEnd(r), // O6
+                ),
+              if (active.isEmpty) const _EmptyRow(),
+            ],
+          ],
+        ),
       ),
     );
   }

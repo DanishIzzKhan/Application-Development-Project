@@ -147,7 +147,12 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
           ],
         );
 
-    return FormScroll(
+    // Plain scroll view: FormScroll measures its children in advance
+    // (IntrinsicHeight), which the QR widget can't do -> blank page.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (!paid)
           _banner(Icons.storefront_outlined,
@@ -237,8 +242,8 @@ class _BookingPassScreenState extends State<BookingPassScreen> {
             ),
           ],
         ),
-        const Spacer(),
       ],
+      ),
     );
   }
 }

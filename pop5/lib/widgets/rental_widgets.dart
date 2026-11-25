@@ -182,11 +182,14 @@ class RentalSummaryCard extends StatelessWidget {
 
 /// Opens the customer's IC (security record) after a confirmation.
 /// Used by O5 and O3c. Every view must be recorded.
-/// [front] / [back] = the walk-in's IC photos taken on O4. A missing side
-/// shows a sample box (app customers, until the ic-documents bucket is
-/// connected).
+/// [front] / [back] = photos already in the app (sample walk-ins from O4).
+/// [load] = real bookings: called only after the owner confirms. It records
+/// the view in ic_access_log and downloads the photos from the private
+/// bucket. If it fails, no photo is shown.
 Future<void> showIcViewer(BuildContext context, String customer,
-    {Uint8List? front, Uint8List? back}) async {
+    {Uint8List? front,
+    Uint8List? back,
+    Future<({Uint8List? front, Uint8List? back})> Function()? load}) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -210,8 +213,23 @@ Future<void> showIcViewer(BuildContext context, String customer,
   );
   if (ok != true || !context.mounted) return;
 
-  // Later: Api.logIcView(customerId) writes the IC access log entry, then
-  // the photos are loaded from the private ic-documents bucket.
+  if (load != null) {
+    try {
+      final photos = await load();
+      front = photos.front;
+      back = photos.back;
+    } catch (e) {
+      debugPrint('IC view failed: $e');
+      if (context.mounted) {
+        showTopNotice(context,
+            title: "Couldn't open the IC",
+            lines: ['Check your internet connection and try again.'],
+            type: NoticeType.error);
+      }
+      return;
+    }
+    if (!context.mounted) return;
+  }
   showTopNotice(context, title: 'IC view recorded', type: NoticeType.success);
 
   // One side of the IC: the real photo, or a sample box.
@@ -232,7 +250,8 @@ Future<void> showIcViewer(BuildContext context, String customer,
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text('$label (sample)',
+                  child: Text(
+                      load != null ? 'No $label photo' : '$label (sample)',
                       style: inter(12, color: AppColors.hint)),
                 ),
         ],
