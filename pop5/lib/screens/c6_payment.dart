@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/vehicle.dart';
 import '../services/api.dart';
+import '../services/hitpay_api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'c7_waiting_for_payment.dart';
@@ -11,10 +12,9 @@ import 'c12b_booking_pass.dart';
 
 enum PayMethod { touchNGo, duitNow, counter }
 
-/// TESTING ONLY: true = skip C7 (waiting for payment) and go straight to the
-/// receipt (C8) as if the payment succeeded. Set to false once real payment
-/// confirmation is connected.
-const bool kSkipPaymentWait = true;
+/// TESTING ONLY: true = skip HitPay and C7 and go straight to the receipt (C8) as if
+/// the payment succeeded. Keep false so Touch 'n Go / DuitNow open the HitPay page.
+const bool kSkipPaymentWait = false;
 
 /// C6 Payment (Touch 'n Go / DuitNow selected) and
 /// C6b Payment - pay at counter (counter selected): one screen, two states.
@@ -77,12 +77,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
         return;
       }
 
-      final paid = kSkipPaymentWait
-          ? true
-          : await Navigator.of(context).push<bool>(
-              MaterialPageRoute(
-                  builder: (_) => WaitingPaymentScreen(bookingId: id)),
-            );
+      // Touch 'n Go / DuitNow: HitPay payment page, then C7 waits for the result.
+      bool? paid = true;
+      if (!kSkipPaymentWait) {
+        final method = _method == PayMethod.touchNGo ? 'TnG' : 'Bank QR';
+        String? checkoutUrl;
+        try {
+          checkoutUrl =
+              await HitpayApi.createPayment(rentalId: id, method: method);
+          await HitpayApi.openCheckout(checkoutUrl);
+        } catch (e) {
+          // C7 still opens, so the customer can try again from there.
+          if (mounted) showToast(context, 'Could not open the payment page: $e');
+        }
+        if (!mounted) return;
+        paid = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => WaitingPaymentScreen(
+              bookingId: id,
+              paymentMethod: method,
+              checkoutUrl: checkoutUrl,
+            ),
+          ),
+        );
+      }
       if (!mounted) return;
 
       if (paid == true) {
