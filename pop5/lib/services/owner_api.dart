@@ -77,6 +77,45 @@ class OwnerReportsData {
   });
 }
 
+/// Ranked maintenance priority item for O12 AI Maintenance (ADP-135).
+class MaintenancePriorityItem {
+  final String vehicleId;
+  final String vehicleTitle;
+  final String priority; // 'HIGH' | 'MEDIUM' | 'LOW'
+  final double riskScore; // 0.0 - 1.0
+  final String description;
+  final bool isUnderRepair;
+  final bool isInspected;
+
+  const MaintenancePriorityItem({
+    required this.vehicleId,
+    required this.vehicleTitle,
+    required this.priority,
+    required this.riskScore,
+    required this.description,
+    required this.isUnderRepair,
+    required this.isInspected,
+  });
+
+  MaintenancePriorityItem copyWith({
+    String? priority,
+    double? riskScore,
+    String? description,
+    bool? isUnderRepair,
+    bool? isInspected,
+  }) {
+    return MaintenancePriorityItem(
+      vehicleId: vehicleId,
+      vehicleTitle: vehicleTitle,
+      priority: priority ?? this.priority,
+      riskScore: riskScore ?? this.riskScore,
+      description: description ?? this.description,
+      isUnderRepair: isUnderRepair ?? this.isUnderRepair,
+      isInspected: isInspected ?? this.isInspected,
+    );
+  }
+}
+
 /// Owner-side calls to Supabase (rentals, counter payment, start, returned).
 /// The database functions check that the signed-in user has role 'owner'.
 class OwnerApi {
@@ -175,7 +214,8 @@ class OwnerApi {
           final status = (row['status'] ?? '').toString().toLowerCase();
           if (status != 'resolved' &&
               status != 'completed' &&
-              status != 'dismissed') {
+              status != 'dismissed' &&
+              status != 'inspected') {
             aiCount++;
           }
         }
@@ -247,6 +287,281 @@ class OwnerApi {
         latestAlertTitle: 'Scooter S02 left Kulai Park',
         aiMaintenanceCount: 2,
       );
+
+  // ---------- O12 AI Maintenance Priority (ADP-135) ----------
+
+  /// Evaluates fleet maintenance risk from rental usage, condition issues, and
+  /// vehicle status, syncs predictions to `maintenance_predictions`, and
+  /// returns vehicles ranked highest-risk first.
+  static Future<List<MaintenancePriorityItem>> fetchAiMaintenancePriorities({
+    bool syncPredictions = true,
+  }) async {
+    try {
+      final vehicleRows = await supabase
+          .from('vehicles')
+          .select('id, type, status, is_active')
+          .eq('is_active', true)
+          .order('id');
+
+      final rentalRows = await supabase.from('rentals').select(
+          'id, vehicle_id, status, blocks_booked, scheduled_start_time');
+
+      final Map<String, String> rentalToVehicle = {};
+      final Map<String, int> rentalCounts = {};
+      final Map<String, int> totalMinutes = {};
+
+      for (final r in rentalRows) {
+        final rId = (r['id'] ?? '').toString();
+        final vId = (r['vehicle_id'] ?? '').toString();
+        final status = (r['status'] ?? '').toString().toLowerCase();
+        if (vId.isEmpty || status == 'cancelled') continue;
+
+        if (rId.isNotEmpty) rentalToVehicle[rId] = vId;
+        rentalCounts[vId] = (rentalCounts[vId] ?? 0) + 1;
+        final blocks = (r['blocks_booked'] as num?)?.toInt() ?? 1;
+        totalMinutes[vId] =
+            (totalMinutes[vId] ?? 0) + (blocks * OwnerRental.blockMinutes);
+      }
+
+      // Reported non-Good condition checks mapped to vehicle_id
+      final Map<String, int> issueCounts = {};
+      final Map<String, String> latestIssueNote = {};
+      try {
+        final checkRows = await supabase
+            .from('vehicle_condition_checks')
+            .select('rental_id, condition, notes, stage')
+            .neq('condition', 'Good');
+        for (final c in checkRows) {
+          final rId = (c['rental_id'] ?? '').toString();
+          final vId = rentalToVehicle[rId];
+          if (vId == null || vId.isEmpty) continue;
+          issueCounts[vId] = (issueCounts[vId] ?? 0) + 1;
+          final note = (c['notes'] ?? c['condition'] ?? '').toString().trim();
+          if (note.isNotEmpty && !latestIssueNote.containsKey(vId)) {
+            latestIssueNote[vId] = note;
+          }
+        }
+      } catch (e) {
+        debugPrint('AI maintenance condition checks fallback: $e');
+      }
+
+      // Existing prediction rows (to preserve inspected state)
+      final Map<String, Map<String, dynamic>> existingPreds = {};
+      try {
+        final predRows =
+            await supabase.from('maintenance_predictions').select().limit(100);
+        for (final row in predRows) {
+          final vId = (row['vehicle_id'] ?? '').toString();
+          if (vId.isNotEmpty) {
+            existingPreds[vId] = Map<String, dynamic>.from(row as Map);
+          }
+        }
+      } catch (e) {
+        debugPrint('AI maintenance predictions read fallback: $e');
+      }
+
+      final List<MaintenancePriorityItem> items = [];
+
+      for (final v in vehicleRows) {
+        final vId = (v['id'] ?? '').toString();
+        if (vId.isEmpty) continue;
+        final title = _vehicleTitle(v);
+        final rawStatus = (v['status'] ?? '').toString();
+        final isUnderRepair =
+            rawStatus == 'Under repair' || rawStatus == 'Maintenance';
+
+        final rentals = rentalCounts[vId] ?? 0;
+        final mins = totalMinutes[vId] ?? 0;
+        final hours = mins / 60.0;
+        final issues = issueCounts[vId] ?? 0;
+
+        final existing = existingPreds[vId];
+        final predStatus = (existing?['status'] ?? '').toString().toLowerCase();
+        final isInspected =
+            predStatus == 'inspected' || predStatus == 'resolved';
+
+        // Weighted AI risk score (0.12 - 0.96)
+        double score = 0.14 +
+            (rentals * 0.045) +
+            (hours * 0.03) +
+            (issues * 0.32) +
+            (isUnderRepair ? 0.25 : 0.0);
+        if (isInspected && issues == 0 && !isUnderRepair) {
+          score = (score * 0.55).clamp(0.12, 0.48);
+        }
+        score = score.clamp(0.12, 0.96);
+
+        final String priority;
+        if (score >= 0.65 || isUnderRepair || issues >= 2) {
+          priority = 'HIGH';
+        } else if (score >= 0.35 || issues == 1 || rentals >= 4) {
+          priority = 'MEDIUM';
+        } else {
+          priority = 'LOW';
+        }
+
+        // Human-readable usage & issue summary
+        final List<String> parts = [];
+        if (rentals > 0) {
+          final hrsText = hours >= 1
+              ? ' (${hours.toStringAsFixed(hours % 1 == 0 ? 0 : 1)} ride hrs)'
+              : '';
+          parts.add(
+              '$rentals ${rentals == 1 ? 'rental' : 'rentals'}$hrsText since last service');
+        }
+        if (issues > 0) {
+          final note = latestIssueNote[vId];
+          parts.add(note != null && note.isNotEmpty
+              ? '$issues ${issues == 1 ? 'issue' : 'issues'} ($note)'
+              : '$issues ${issues == 1 ? 'issue' : 'issues'} reported');
+        }
+        if (parts.isEmpty) {
+          parts.add(isInspected
+              ? 'Recently inspected · low usage'
+              : 'Low usage · good condition');
+        }
+
+        items.add(MaintenancePriorityItem(
+          vehicleId: vId,
+          vehicleTitle: title,
+          priority: priority,
+          riskScore: score,
+          description: parts.join(' · '),
+          isUnderRepair: isUnderRepair,
+          isInspected: isInspected,
+        ));
+      }
+
+      // Sort highest risk first
+      items.sort((a, b) => b.riskScore.compareTo(a.riskScore));
+
+      if (syncPredictions && items.isNotEmpty) {
+        await _syncMaintenancePredictions(items, existingPreds);
+      }
+
+      return items;
+    } catch (e) {
+      if (AppConfig.uiPreviewMode) {
+        debugPrint('Preview mode: using sample AI maintenance items. $e');
+        return _sampleMaintenanceItems;
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> _syncMaintenancePredictions(
+    List<MaintenancePriorityItem> items,
+    Map<String, Map<String, dynamic>> existingPreds,
+  ) async {
+    try {
+      for (final item in items) {
+        final existing = existingPreds[item.vehicleId];
+        final nextStatus = item.isUnderRepair
+            ? 'in_progress'
+            : (item.isInspected
+                ? 'inspected'
+                : (item.priority == 'LOW' ? 'resolved' : 'pending'));
+
+        final payload = {
+          'vehicle_id': item.vehicleId,
+          'priority': item.priority,
+          'risk_score': double.parse(item.riskScore.toStringAsFixed(2)),
+          'reason': item.description,
+          'status': nextStatus,
+        };
+
+        if (existing != null && existing['id'] != null) {
+          await supabase
+              .from('maintenance_predictions')
+              .update(payload)
+              .eq('id', existing['id']);
+        } else if (item.priority != 'LOW') {
+          await supabase.from('maintenance_predictions').insert(payload);
+        }
+      }
+    } catch (e) {
+      debugPrint('Sync maintenance_predictions skipped: $e');
+    }
+  }
+
+  /// Marks a vehicle as under repair in `vehicles` and updates prediction state.
+  static Future<void> markVehicleUnderRepair(String vehicleId) async {
+    try {
+      await supabase
+          .from('vehicles')
+          .update({'status': 'Under repair'}).eq('id', vehicleId);
+    } catch (_) {
+      await supabase
+          .from('vehicles')
+          .update({'status': 'Maintenance'}).eq('id', vehicleId);
+    }
+
+    try {
+      await supabase
+          .from('maintenance_predictions')
+          .update({'status': 'in_progress'}).eq('vehicle_id', vehicleId);
+    } catch (e) {
+      debugPrint('Update prediction under repair skipped: $e');
+    }
+  }
+
+  /// Marks or unmarks a vehicle as inspected in `maintenance_predictions`.
+  static Future<void> toggleVehicleInspected(
+    String vehicleId,
+    bool inspected,
+  ) async {
+    try {
+      final newStatus = inspected ? 'inspected' : 'pending';
+      final updated = await supabase
+          .from('maintenance_predictions')
+          .update({'status': newStatus})
+          .eq('vehicle_id', vehicleId)
+          .select('id');
+
+      if (updated.isEmpty && inspected) {
+        await supabase.from('maintenance_predictions').insert({
+          'vehicle_id': vehicleId,
+          'priority': 'MEDIUM',
+          'risk_score': 0.35,
+          'reason': 'Inspected by owner',
+          'status': 'inspected',
+        });
+      }
+    } catch (e) {
+      debugPrint('Toggle vehicle inspected skipped: $e');
+    }
+  }
+
+  static List<MaintenancePriorityItem> get _sampleMaintenanceItems => const [
+        MaintenancePriorityItem(
+          vehicleId: 'BK-03',
+          vehicleTitle: 'Bicycle BK-03',
+          priority: 'HIGH',
+          riskScore: 0.85,
+          description:
+              '19 rentals (6.3 ride hrs) since last service · 1 issue reported',
+          isUnderRepair: false,
+          isInspected: false,
+        ),
+        MaintenancePriorityItem(
+          vehicleId: 'SC-01',
+          vehicleTitle: 'Scooter SC-01',
+          priority: 'MEDIUM',
+          riskScore: 0.54,
+          description: '8 rentals (4 ride hrs) since last service',
+          isUnderRepair: false,
+          isInspected: false,
+        ),
+        MaintenancePriorityItem(
+          vehicleId: 'BK-01',
+          vehicleTitle: 'Bicycle BK-01',
+          priority: 'LOW',
+          riskScore: 0.20,
+          description: 'Low usage · good condition',
+          isUnderRepair: false,
+          isInspected: false,
+        ),
+      ];
 
   // ---------- O14 Reports & Revenue Analytics (ADP-137) ----------
 
