@@ -8,6 +8,7 @@ import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'c3_vehicles.dart';
+import 'c8_receipt.dart';
 import 'c9d_pay_late_charge.dart';
 import 'c10_extend_rental.dart';
 import 'c11_report_problem.dart';
@@ -18,6 +19,10 @@ import 'c14_settings.dart';
 /// C9 Active rental. One screen with three looks that switch by themselves
 /// as the clock runs:
 ///   more than 10 min left -> C9, 10 min or less -> C9b, past the end -> C9c.
+///
+/// It also checks the booking every few seconds, so it follows the owner:
+///   owner taps "Returned" -> the timer stops, "the shop is checking it"
+///   owner ends the rental -> "Your rental has ended" and the receipt opens.
 class ActiveRentalScreen extends StatefulWidget {
   final String bookingId; // rentals.id
   const ActiveRentalScreen({super.key, required this.bookingId});
@@ -37,6 +42,7 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
   int _unread = 0;
   DateTime _now = DateTime.now();
   Timer? _ticker;
+  Timer? _poll; // checks the booking for the owner's Returned / End
 
   @override
   void initState() {
@@ -45,36 +51,56 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
+    _poll = Timer.periodic(
+        const Duration(seconds: 5), (_) => _load(silent: true));
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _poll?.cancel();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  /// [silent] = the 5-second check: no spinner, errors ignored.
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final row = await supabase
           .from('rentals')
           .select('*, vehicles(id, type)')
           .eq('id', widget.bookingId)
           .single();
-      final unread = await Api.fetchUnreadCount();
+      if (!mounted) return;
+      if (row['status'] == 'completed') {
+        _rentalEnded();
+        return;
+      }
+      final unread = silent ? _unread : await Api.fetchUnreadCount();
       if (!mounted) return;
       setState(() {
         _r = ActiveRental.fromMap(row);
         _unread = unread;
       });
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (!silent && mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (!silent && mounted) setState(() => _loading = false);
     }
+  }
+
+  /// The owner ended the rental: stop checking and show the receipt.
+  void _rentalEnded() {
+    _poll?.cancel();
+    _ticker?.cancel();
+    showToast(context, 'Your rental has ended.');
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => ReceiptScreen(bookingId: widget.bookingId)));
   }
 
   Future<void> _extend() async {
@@ -154,20 +180,27 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
   }
 
   Widget _content(ActiveRental r) {
-    final left = r.timeLeft(_now);
+    // Once the owner taps "Returned", the clock stops at the return time.
+    final returned = r.actualEnd != null;
+    final at = r.actualEnd ?? _now;
+    final left = r.timeLeft(at);
     final overdue = left.isNegative;
-    final tenMin = !overdue && left <= const Duration(minutes: 10);
-    final lateBy = r.lateBy(_now);
+    final tenMin = !returned && !overdue && left <= const Duration(minutes: 10);
+    final lateBy = r.lateBy(at);
     final fraction = overdue
         ? 0.0
         : (left.inSeconds / r.bookedDuration.inSeconds).clamp(0.0, 1.0);
-    final blocks = r.lateBlocks(_now);
+    final blocks = r.lateBlocks(at);
     final minsLeft = (left.inSeconds / 60).ceil();
 
     return FormScroll(
       children: [
         // ---- banner ----
-        if (overdue)
+        if (returned)
+          _banner(Icons.check_circle_outline,
+              'Vehicle returned at ${clockLabel(r.actualEnd!)}.',
+              ' The shop is checking it and will end your rental.')
+        else if (overdue)
           _banner(Icons.warning_amber_rounded, 'Overdue.',
               ' Please return the vehicle to the shop now.')
         else if (tenMin)
@@ -177,7 +210,8 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
         else if (_nearBoundary)
           _banner(Icons.location_on_outlined, 'Near the park boundary.',
               ' Please turn back.'),
-        if (overdue || tenMin || _nearBoundary) const SizedBox(height: 14),
+        if (returned || overdue || tenMin || _nearBoundary)
+          const SizedBox(height: 14),
 
         // ---- countdown ring ----
         Center(
@@ -223,7 +257,7 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Auto-charged so far',
+                    Text(returned ? 'Late charge' : 'Auto-charged so far',
                         style: inter(14, weight: FontWeight.w600)),
                     Text(
                         blocks == 0
@@ -234,17 +268,23 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  blocks == 0
+                  returned
+                      ? (blocks == 0
+                          ? 'Returned within the ${r.graceMinutes} min free period. Nothing to pay.'
+                          : 'Pay ${rmOrX(r.lateCharge(at))} at the counter.')
+                      : blocks == 0
                       ? 'You are inside the ${r.graceMinutes} min free period. Charges start after ${clockLabel(r.nextChargeAt(_now))}.'
                       : 'Charged automatically to Visa •••• 4417. Return by ${clockLabel(r.nextChargeAt(_now))} to avoid the next ${rmOrX(r.lateRate)} charge.',
                   style: inter(12, color: AppColors.text2),
                 ),
-                const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: _payLate,
-                  child: Text('Charge failed? Pay here ›',
-                      style: inter(13, weight: FontWeight.w600)),
-                ),
+                if (!returned) ...[
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: _payLate,
+                    child: Text('Charge failed? Pay here ›',
+                        style: inter(13, weight: FontWeight.w600)),
+                  ),
+                ],
               ],
             ),
           ),
@@ -266,8 +306,8 @@ class _ActiveRentalScreenState extends State<ActiveRentalScreen> {
         const Spacer(),
         const SizedBox(height: 14),
 
-        // ---- actions (none when overdue: just return the vehicle) ----
-        if (!overdue)
+        // ---- actions (none when overdue or returned: no more extending) ----
+        if (!overdue && !returned)
           Row(
             children: [
               Expanded(

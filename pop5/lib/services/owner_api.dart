@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../models/rental.dart';
 import 'api.dart';
 
@@ -91,6 +93,44 @@ class OwnerApi {
   static Future<void> markReturned(String rentalId) async {
     await supabase
         .rpc('owner_mark_returned', params: {'p_rental_id': rentalId});
+  }
+
+  // ---------- O6 End rental ----------
+
+  /// Uploads the photo of an issue found at return to the report-photos
+  /// bucket, in the owner's own folder (same rule as customer reports).
+  /// Returns the storage path saved with the condition check.
+  static Future<String> uploadIssuePhoto(
+      String rentalId, Uint8List bytes) async {
+    final uid = supabase.auth.currentUser!.id;
+    final path = '$uid/$rentalId-${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await supabase.storage.from('report-photos').uploadBinary(path, bytes,
+        fileOptions: const FileOptions(contentType: 'image/jpeg'));
+    return path;
+  }
+
+  /// Ends the rental with owner_end_rental: return time, condition (+ issue),
+  /// waiver and, for late blocks not auto-charged, the counter payment
+  /// [method] ('Cash' | 'TnG' | 'Bank QR' | 'Card'). Rental -> completed,
+  /// vehicle -> Available (Maintenance if damaged).
+  static Future<void> endRental(
+    String rentalId, {
+    required DateTime returnTime,
+    required String condition,
+    String? issueNote,
+    String? issuePhotoPath,
+    bool waive = false,
+    String? method,
+  }) async {
+    await supabase.rpc('owner_end_rental', params: {
+      'p_rental_id': rentalId,
+      'p_return_time': returnTime.toUtc().toIso8601String(),
+      'p_condition': condition,
+      'p_issue_note': issueNote,
+      'p_issue_photo': issuePhotoPath,
+      'p_waive': waive,
+      'p_payment_method': method,
+    });
   }
 
   // ---------- IC photos ----------

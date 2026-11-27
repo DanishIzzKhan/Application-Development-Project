@@ -9,7 +9,8 @@ import '../widgets/rental_widgets.dart';
 /// counter, or when an app customer's automatic late charge failed.
 ///
 /// Pops with the payment method ('Card' | 'Cash' | 'TnG') once the owner
-/// confirms the money was received, or null on Cancel. O6 then ends the rental.
+/// confirms the money was received, or null on Cancel. O6 then ends the rental
+/// and, for real bookings, saves the payment with owner_end_rental.
 class CollectPaymentScreen extends StatefulWidget {
   final OwnerRental rental;
   final int blocks; // late blocks to collect
@@ -47,9 +48,11 @@ class _CollectPaymentScreenState extends State<CollectPaymentScreen> {
 
   OwnerRental get _r => widget.rental;
 
-  /// Walk-ins have no app, so they can't pay in the app.
-  late final List<_PayOption> _options =
-      _r.isWalkIn ? const [_cash, _qr] : const [_inApp, _cash, _qr];
+  /// Walk-ins have no app, so they can't pay in the app. Real bookings:
+  /// the "pay in the app" request isn't built yet, so counter only.
+  late final List<_PayOption> _options = _r.isWalkIn || _r.fromDatabase
+      ? const [_cash, _qr]
+      : const [_inApp, _cash, _qr];
 
   /// App customer: "pay in the app" first. Walk-in: Cash first.
   late _PayOption _selected = _options.first;
@@ -109,8 +112,11 @@ class _CollectPaymentScreenState extends State<CollectPaymentScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Use this only when an automatic charge fails, '
-                    'or for walk-in customers.',
+                    _r.fromDatabase
+                        ? 'Collect the late charge at the counter, '
+                            'then end the rental.'
+                        : 'Use this only when an automatic charge fails, '
+                            'or for walk-in customers.',
                     style: inter(13, color: AppColors.text2),
                   ),
                 ),
@@ -150,8 +156,8 @@ class _CollectPaymentScreenState extends State<CollectPaymentScreen> {
             const SizedBox(height: 8),
           ],
 
-          // ---- Status card (app customers: why we are here) ----
-          if (!_r.isWalkIn) ...[
+          // ---- Status card (sample app customers: why we are here) ----
+          if (!_r.isWalkIn && !_r.fromDatabase) ...[
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.all(12),

@@ -132,13 +132,12 @@ class _RentalsScreenState extends State<RentalsScreen> {
     final ended = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => EndRentalScreen(rental: rental)),
     );
-    if (ended == true && mounted) {
-      // End rental is not saved in the database yet (next step), so the
-      // row is only hidden until the list is refreshed.
-      setState(() {
-        _dbRentals = _dbRentals.where((r) => r.id != rental.id).toList();
-        _appOnly = _appOnly.where((r) => r.id != rental.id).toList();
-      });
+    if (ended != true || !mounted) return;
+    if (rental.fromDatabase) {
+      await _load(); // the database now says 'completed'
+    } else {
+      setState(
+          () => _appOnly = _appOnly.where((r) => r.id != rental.id).toList());
     }
   }
 
@@ -308,7 +307,12 @@ class _RentalsScreenState extends State<RentalsScreen> {
     }
     final blocks = r.lateBlocks(now);
     if (blocks == 0) return '${formatLate(late)} late · in grace period';
-    return '${formatLate(late)} late · $blocks block${blocks == 1 ? '' : 's'} auto-charged';
+    // Real bookings: no automatic card charge yet, so the late charge is
+    // collected when the rental ends.
+    if (r.fromDatabase) {
+      return '${formatLate(late)} late · ${_blocks(blocks)} · ${formatRM(r.lateCharge(now))}';
+    }
+    return '${formatLate(late)} late · ${_blocks(blocks)} auto-charged';
   }
 
   /// Second line once "Returned" was tapped: the time is frozen there,
@@ -320,11 +324,14 @@ class _RentalsScreenState extends State<RentalsScreen> {
     if (late == 0) return '$back · on time · tap End to check';
     final blocks = r.lateBlocks(at);
     if (blocks == 0) return '$back · ${formatLate(late)} late (grace)';
-    if (r.isWalkIn) {
+    if (r.isWalkIn || r.fromDatabase) {
       return '$back · ${formatLate(late)} late · ${formatRM(r.lateCharge(at))} to collect';
     }
-    return '$back · ${formatLate(late)} late · $blocks block${blocks == 1 ? '' : 's'} charged';
+    return '$back · ${formatLate(late)} late · ${_blocks(blocks)} charged';
   }
+
+  /// "1 late block" / "3 late blocks".
+  String _blocks(int n) => '$n late block${n == 1 ? '' : 's'}';
 }
 
 /// One list row: two lines of text, optional badge, button on the right,
