@@ -407,15 +407,12 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
               ),
             ),
           ],
-          // Customer details still show sample data, so only for samples.
-          if (!_r.fromDatabase) ...[
-            const SizedBox(height: 14),
-            InkWell(
-              onTap: _openCustomerDetails,
-              child: Text('View customer details ›',
-                  style: inter(13, weight: FontWeight.w600)),
-            ),
-          ],
+          const SizedBox(height: 14),
+          InkWell(
+            onTap: _openCustomerDetails,
+            child: Text('View customer details ›',
+                style: inter(13, weight: FontWeight.w600)),
+          ),
 
           const Spacer(),
           const SizedBox(height: 16),

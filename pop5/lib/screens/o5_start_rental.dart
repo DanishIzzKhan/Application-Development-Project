@@ -165,9 +165,8 @@ class _StartRentalScreenState extends State<StartRentalScreen> {
             title: r.title,
             subtitle:
                 'Booking ${r.bookingCode} · ${r.startLabel(DateTime.now())} · ${r.durationLabel}',
-            // Customer details still show sample data, so only for samples.
-            linkText: r.fromDatabase ? null : 'View customer details ›',
-            onLinkTap: r.fromDatabase ? null : _openCustomerDetails,
+            linkText: 'View customer details ›',
+            onLinkTap: _openCustomerDetails,
           ),
           const SizedBox(height: 12),
 
