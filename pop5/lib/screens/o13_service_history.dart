@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 class O13ServiceHistoryScreen extends StatefulWidget {
+  final String? vehicleId;
   final String vehicleName;
   final bool initialUnderRepair;
 
   const O13ServiceHistoryScreen({
     super.key,
+    this.vehicleId,
     this.vehicleName = 'Bicycle B03',
     this.initialUnderRepair = true,
   });
