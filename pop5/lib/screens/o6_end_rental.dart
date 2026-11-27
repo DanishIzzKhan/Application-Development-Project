@@ -3,8 +3,10 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/rental.dart';
+import '../services/owner_api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
@@ -14,6 +16,10 @@ import 'o6c_rental_completed.dart';
 
 /// O6 End rental — opened from "End" (or tapping an Active row) on O3.
 /// Pops with `true` when the owner ends the rental, so O3 removes it.
+///
+/// Real bookings (rental.fromDatabase) are ended with owner_end_rental:
+/// return time, condition + issue (photo in report-photos), waiver, and the
+/// late charge collected at the counter (no automatic card charge yet).
 class EndRentalScreen extends StatefulWidget {
   final OwnerRental rental;
   const EndRentalScreen({super.key, required this.rental});
@@ -41,6 +47,8 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
   Uint8List? _issuePhoto;
 
   bool get _hasIssue => _condition != VehicleCondition.good;
+
+  bool _busy = false; // saving to the database
 
   /// Minutes the vehicle came back before the booked end (no refund).
   int get _earlyMin {
@@ -92,8 +100,10 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
   double _money(int blocks) => blocks * _r.lateRatePerBlock;
   double get _total => _r.rentalTotal + _money(_owedBlocks);
 
-  /// Late walk-in: no saved card, so payment must be collected first.
-  bool get _mustCollect => _r.isWalkIn && _extraBlocks > 0;
+  /// Late blocks nobody has paid yet must be collected before ending:
+  /// walk-ins (no saved card), and real bookings, because automatic card
+  /// charging isn't set up yet (late_blocks_charged stays 0).
+  bool get _mustCollect => _extraBlocks > 0 && (_r.isWalkIn || _r.fromDatabase);
 
   // ---------- Actions ----------
 
@@ -180,9 +190,9 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
       _showMissing(); // e.g. issue not described yet
       return;
     }
-    // Walk-in: the late blocks not paid yet. App customer whose auto-charge
-    // failed: all late blocks owed.
-    final blocks = _r.isWalkIn ? _extraBlocks : _owedBlocks;
+    // Walk-ins and real bookings: the late blocks not paid yet. Sample app
+    // customer whose auto-charge failed: all late blocks owed.
+    final blocks = _r.isWalkIn || _r.fromDatabase ? _extraBlocks : _owedBlocks;
     if (blocks == 0) {
       showTopNotice(context, title: 'Nothing to collect');
       return;
@@ -230,12 +240,9 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
   }
 
   /// Ends the rental. [collected] / [method] are set when O6b took a payment.
-  void _finishEnd({double? collected, String? method}) {
-    // Later: Api.endRental(rental.id, returnTime: _returnTime,
-    //   condition: _condition, waived: _waived) sets actual_end_time and
-    //   status 'completed'; an Edge Function refunds any mistaken charge.
-    //   It also saves a vehicle_condition_checks row (stage 'return',
-    //   condition, notes = _issueNote, photo_url = uploaded _issuePhoto).
+  Future<void> _finishEnd({double? collected, String? method}) async {
+    if (_r.fromDatabase && !await _saveEnd(method)) return;
+    if (!mounted) return;
 
     // O6c replaces O6. `result: true` tells O3 the rental ended, so O3
     // removes it from Active.
@@ -256,6 +263,48 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
     );
   }
 
+  /// Saves the end in Supabase: uploads the issue photo, then calls
+  /// owner_end_rental. Shows a red notification and returns false on error,
+  /// so the owner stays on O6 and can try again.
+  Future<bool> _saveEnd(String? method) async {
+    setState(() => _busy = true);
+    try {
+      String? photoPath;
+      if (_hasIssue && _issuePhoto != null) {
+        photoPath = await OwnerApi.uploadIssuePhoto(_r.id, _issuePhoto!);
+      }
+      await OwnerApi.endRental(
+        _r.id,
+        returnTime: _returnTime,
+        condition: _condition.label,
+        issueNote: _hasIssue ? _issueNote.text.trim() : null,
+        issuePhotoPath: photoPath,
+        waive: _waived,
+        method: method,
+      );
+      return true;
+    } on PostgrestException catch (e) {
+      // Our database functions explain the problem for the owner.
+      if (mounted) {
+        showTopNotice(context,
+            title: "Couldn't end the rental",
+            lines: [e.message],
+            type: NoticeType.error);
+      }
+    } catch (e) {
+      debugPrint('End rental failed: $e');
+      if (mounted) {
+        showTopNotice(context,
+            title: "Couldn't end the rental",
+            lines: ['Check your internet connection and try again.'],
+            type: NoticeType.error);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    return false;
+  }
+
   /// "Payment" row on O6c, e.g. "Late charge auto-charged ✓".
   String _paymentLine(double? collected, String? method) {
     if (collected != null) {
@@ -270,6 +319,7 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
   String _methodLabel(String? m) => switch (m) {
         'Cash' => 'Cash',
         'TnG' => 'Touch ’n Go / bank QR',
+        'Bank QR' => 'Bank QR',
         'Card' => 'paid in the app',
         _ => 'paid',
       };
@@ -297,7 +347,10 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
                       style: inter(14, weight: FontWeight.w600)),
                 ),
                 SmallButton(
-                  label: _waived ? 'Undo' : (_r.isWalkIn ? 'Waive' : 'Refund'),
+                  // "Refund" only when something was already charged.
+                  label: _waived
+                      ? 'Undo'
+                      : (_chargedBlocks > 0 ? 'Refund' : 'Waive'),
                   icon: _waived ? Icons.undo : Icons.currency_exchange,
                   primary: false,
                   onPressed: _toggleWaive,
@@ -363,7 +416,9 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
 
           const Spacer(),
           const SizedBox(height: 16),
-          if (!_r.isWalkIn) ...[
+          // Sample app customers only: real bookings already collect any
+          // unpaid late charge with the main button.
+          if (!_r.isWalkIn && !_r.fromDatabase) ...[
             Center(
               child: InkWell(
                 onTap: _collectPayment,
@@ -377,11 +432,12 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
           // Grey until the issue is described (Minor issue / Damaged).
           // A tap on the grey button shows what is missing.
           GestureDetector(
-            onTap: _canEnd ? null : _showMissing,
+            onTap: _canEnd || _busy ? null : _showMissing,
             child: PrimaryButton(
               label: _mustCollect
                   ? 'Collect ${formatRM(_money(_extraBlocks))} · end rental'
                   : 'End rental',
+              loading: _busy,
               onPressed: _canEnd ? _endRental : null,
             ),
           ),
@@ -466,7 +522,7 @@ class _EndRentalScreenState extends State<EndRentalScreen> {
         rows.add(ChargeRow('Late charge ($_lateBlocks × 20 min)', formatRM(0),
             note: 'waived'));
       } else {
-        final note = _r.isWalkIn
+        final note = _r.isWalkIn || (_r.fromDatabase && _extraBlocks > 0)
             ? 'to collect'
             : (_chargedBlocks >= _owedBlocks
                 ? 'auto-charged'
