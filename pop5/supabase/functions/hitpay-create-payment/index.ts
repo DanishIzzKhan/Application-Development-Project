@@ -24,7 +24,20 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: 'Please sign in again.' }, 401);
 
     const { rental_id, method } = await req.json();
-    const payMethod = ['TnG', 'Bank QR', 'Card'].includes(method) ? method : 'Card';
+
+    // What the customer chose in the app -> HitPay method id, and the value saved in
+    // payments.payment_method (TnG | Bank QR | Cash | Card).
+    const CHOICES: Record<string, { hitpay: string; db: 'TnG' | 'Bank QR' | 'Card' }> = {
+      TnG: { hitpay: 'touch_n_go', db: 'TnG' },
+      DuitNow: { hitpay: 'duitnow', db: 'Bank QR' },
+      FPX: { hitpay: 'fpx', db: 'Bank QR' },
+      Card: { hitpay: 'card', db: 'Card' },
+      'Bank QR': { hitpay: 'duitnow', db: 'Bank QR' }, // older app versions
+    };
+    // 'Online' (the app's "Pay online" option) is not in the list: HitPay shows every method.
+    const known = CHOICES[method];
+    const choice = known ?? CHOICES.Card; // saved as Card until the webhook records the real method
+    const payMethod = choice.db;
 
     // RLS: a customer can only read their own rentals.
     const { data: rental } = await userClient
@@ -56,10 +69,14 @@ Deno.serve(async (req) => {
     const redirect = Deno.env.get('HITPAY_REDIRECT_URL');
     if (redirect) body.set('redirect_url', redirect);
 
-    // Empty = HitPay shows every method enabled on the account (best for the sandbox).
-    // Production example: touch_n_go,duitnow,fpx,card
-    const methods = (Deno.env.get('HITPAY_PAYMENT_METHODS') ?? '')
+    // Which methods HitPay shows:
+    //  - HITPAY_PAYMENT_METHODS set (e.g. touch_n_go,duitnow,fpx,card): always exactly those.
+    //  - HITPAY_RESTRICT_METHODS=true: only the method the customer picked in the app.
+    //  - neither: every method enabled on the HitPay account (default, best for the sandbox).
+    const override = (Deno.env.get('HITPAY_PAYMENT_METHODS') ?? '')
       .split(',').map((s) => s.trim()).filter(Boolean);
+    const restrict = (Deno.env.get('HITPAY_RESTRICT_METHODS') ?? '').toLowerCase() === 'true';
+    const methods = override.length ? override : restrict && known ? [choice.hitpay] : [];
     for (const m of methods) body.append('payment_methods[]', m);
 
     const res = await fetch(`${HITPAY_BASE}/v1/payment-requests`, {

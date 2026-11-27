@@ -10,7 +10,7 @@ import 'c7_waiting_for_payment.dart';
 import 'c8_receipt.dart';
 import 'c12b_booking_pass.dart';
 
-enum PayMethod { touchNGo, duitNow, counter }
+enum PayMethod { online, counter }
 
 /// TESTING ONLY: true = skip HitPay and C7 and go straight to the receipt (C8) as if
 /// the payment succeeded. Keep false so Touch 'n Go / DuitNow open the HitPay page.
@@ -41,7 +41,7 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
-  PayMethod _method = PayMethod.touchNGo; // wireframe C6 default
+  PayMethod _method = PayMethod.online; // default: pay online
   bool _loading = false;
 
   String get _totalLabel => 'RM ${widget.total.toStringAsFixed(2)}';
@@ -49,7 +49,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       '${widget.durationMinutes ~/ 60} hr ${widget.durationMinutes % 60} min';
 
   String get _buttonLabel => _method == PayMethod.counter
-      ? 'Confirm booking · pay at counter'
+      ? 'Confirm booking · pay with cash'
       : 'Pay $_totalLabel now';
 
   /// Saves the booking (pending_payment), opens C7 to wait for payment and,
@@ -80,7 +80,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       // Touch 'n Go / DuitNow: HitPay payment page, then C7 waits for the result.
       bool? paid = true;
       if (!kSkipPaymentWait) {
-        final method = _method == PayMethod.touchNGo ? 'TnG' : 'Bank QR';
+        // 'Online': the HitPay page lets the customer pick card / FPX / Touch 'n Go ...
+        const method = 'Online';
         String? checkoutUrl;
         try {
           checkoutUrl =
@@ -134,22 +135,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 style: inter(14, weight: FontWeight.w600)),
             const SizedBox(height: 14),
             _PayOption(
-              title: "Touch 'n Go eWallet",
-              subtitle: 'Pay now through the payment gateway',
-              selected: _method == PayMethod.touchNGo,
-              onTap: () => setState(() => _method = PayMethod.touchNGo),
+              title: 'Pay online',
+              subtitle: 'Card, online banking (FPX), Touch \'n Go and more, on the secure HitPay page',
+              selected: _method == PayMethod.online,
+              onTap: () => setState(() => _method = PayMethod.online),
             ),
             const SizedBox(height: 14),
             _PayOption(
-              title: 'DuitNow / bank QR',
-              subtitle: 'Scan with your banking app',
-              selected: _method == PayMethod.duitNow,
-              onTap: () => setState(() => _method = PayMethod.duitNow),
-            ),
-            const SizedBox(height: 14),
-            _PayOption(
-              title: 'Pay at the counter',
-              subtitle: 'Cash or QR at the shop · owner confirms your payment',
+              title: 'Pay with cash',
+              subtitle: 'Pay at the counter · the owner confirms your payment',
               selected: _method == PayMethod.counter,
               onTap: () => setState(() => _method = PayMethod.counter),
             ),
