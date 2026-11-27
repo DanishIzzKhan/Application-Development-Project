@@ -1,3 +1,4 @@
+
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -250,7 +251,7 @@ class Api {
             (r['late_rate'] as num).toDouble());
       }, () => const ShopRules(5, 0));
 
-  /// Only vehicle, start time and number of 20-minute blocks are sent.
+  /// Creates a booking for the currently authenticated customer.
   /// A database trigger sets the price, end time, codes and status.
   static Future<String> createBooking({
     required Vehicle vehicle,
@@ -258,15 +259,34 @@ class Api {
     required int durationMinutes,
   }) =>
       _orPreview<String>(() async {
+        final uid = supabase.auth.currentUser?.id;
+
+        if (uid == null) {
+          throw Exception('Please sign in before making a booking.');
+        }
+
+        final profile = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', uid)
+            .maybeSingle();
+
+        if (profile == null) {
+          throw Exception(
+              'Customer profile not found. Please check your account registration.');
+        }
+
         final row = await supabase
             .from('rentals')
             .insert({
+              'customer_id': uid,
               'vehicle_id': vehicle.id,
               'scheduled_start_time': start.toUtc().toIso8601String(),
               'blocks_booked': durationMinutes ~/ 20,
             })
             .select('id')
             .single();
+
         return row['id'] as String;
       }, () => 'RNT-${DateTime.now().millisecondsSinceEpoch % 100000}');
 
@@ -345,3 +365,4 @@ class Api {
     return list;
   }
 }
+
