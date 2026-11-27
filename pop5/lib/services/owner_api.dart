@@ -1,8 +1,7 @@
 import 'package:flutter/foundation.dart';
-
-import '../config.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config.dart';
 import '../models/customer.dart';
 import '../models/rental.dart';
 import '../models/vehicle.dart';
@@ -35,6 +34,49 @@ class OwnerDashboardData {
   });
 }
 
+/// Time-slot usage item for O14 Reports.
+class BusyHourStat {
+  final String label;
+  final int count;
+  final double ratio;
+
+  const BusyHourStat({
+    required this.label,
+    required this.count,
+    required this.ratio,
+  });
+}
+
+/// Vehicle usage item for O14 Reports.
+class VehicleUsageStat {
+  final String vehicleTitle;
+  final int rentalCount;
+
+  const VehicleUsageStat({
+    required this.vehicleTitle,
+    required this.rentalCount,
+  });
+}
+
+/// Aggregated analytics data for O14 Reports & Revenue Analytics (ADP-137).
+class OwnerReportsData {
+  final double totalRevenue;
+  final int rentalCount;
+  final List<double> dailyBarHeights;
+  final int peakBarIndex;
+  final List<BusyHourStat> busiestHours;
+  final List<VehicleUsageStat> mostUsedVehicles;
+
+  const OwnerReportsData({
+    required this.totalRevenue,
+    required this.rentalCount,
+    required this.dailyBarHeights,
+    required this.peakBarIndex,
+    required this.busiestHours,
+    required this.mostUsedVehicles,
+  });
+}
+
 /// Owner-side calls to Supabase (rentals, counter payment, start, returned).
 /// The database functions check that the signed-in user has role 'owner'.
 class OwnerApi {
@@ -44,7 +86,7 @@ class OwnerApi {
   static const _rentalSelect =
       '*, vehicles(id, type), users(username, full_name, ic_front_path, ic_back_path)';
 
-// ---------- O2 Home Dashboard (ADP-130) ----------
+  // ---------- O2 Home Dashboard (ADP-130) ----------
 
   static Future<OwnerDashboardData> fetchDashboardData() async {
     try {
@@ -168,7 +210,7 @@ class OwnerApi {
       if (v > maxVal) maxVal = v;
     }
     if (maxVal <= 0) {
-      return List<double>.filled(14, 14.0);
+      return List<double>.filled(totals.length, 14.0);
     }
     return totals.map((v) {
       if (v <= 0) return 14.0;
@@ -204,6 +246,183 @@ class OwnerApi {
         unreadAlertCount: 3,
         latestAlertTitle: 'Scooter S02 left Kulai Park',
         aiMaintenanceCount: 2,
+      );
+
+  // ---------- O14 Reports & Revenue Analytics (ADP-137) ----------
+
+  static Future<OwnerReportsData> fetchReportsData({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    try {
+      final rangeStart = DateTime(start.year, start.month, start.day);
+      final rangeEnd = DateTime(end.year, end.month, end.day, 23, 59, 59, 999);
+      final startUtc = rangeStart.toUtc().toIso8601String();
+      final endUtc = rangeEnd.toUtc().toIso8601String();
+
+      final totalDays =
+          DateTime(end.year, end.month, end.day).difference(rangeStart).inDays +
+              1;
+      final bucketCount = totalDays.clamp(1, 14);
+      final bucketTotals = List<double>.filled(bucketCount, 0.0);
+      double totalRevenue = 0.0;
+
+      // 1. Fetch completed payments in range
+      final paymentRows = await supabase
+          .from('payments')
+          .select('amount, status, created_at')
+          .eq('status', 'completed')
+          .gte('created_at', startUtc)
+          .lte('created_at', endUtc);
+
+      for (final p in paymentRows) {
+        final amount = double.tryParse(p['amount']?.toString() ?? '') ?? 0.0;
+        final rawDate = p['created_at']?.toString();
+        if (rawDate == null) continue;
+        final dt = DateTime.parse(rawDate).toLocal();
+        totalRevenue += amount;
+
+        final dayDate = DateTime(dt.year, dt.month, dt.day);
+        final dayOffset = dayDate.difference(rangeStart).inDays;
+        if (dayOffset >= 0 && dayOffset < totalDays) {
+          final bucketIdx = ((dayOffset * bucketCount) / totalDays)
+              .floor()
+              .clamp(0, bucketCount - 1);
+          bucketTotals[bucketIdx] += amount;
+        }
+      }
+
+      double maxBucket = 0.0;
+      int peakIndex = -1;
+      for (int i = 0; i < bucketTotals.length; i++) {
+        if (bucketTotals[i] > maxBucket) {
+          maxBucket = bucketTotals[i];
+          peakIndex = i;
+        }
+      }
+      final barHeights = _normalizeBarHeights(bucketTotals);
+
+      // 2. Fetch non-cancelled rentals in range
+      final rentalRows = await supabase
+          .from('rentals')
+          .select(
+              'id, status, scheduled_start_time, vehicle_id, vehicles(id, type)')
+          .gte('scheduled_start_time', startUtc)
+          .lte('scheduled_start_time', endUtc);
+
+      int validRentalCount = 0;
+      final Map<int, int> slotCounts = {};
+      final Map<String, ({String title, int count})> vehicleCounts = {};
+
+      for (final r in rentalRows) {
+        final status = (r['status'] ?? '').toString().toLowerCase();
+        if (status == 'cancelled') continue;
+        validRentalCount++;
+
+        final rawStart = r['scheduled_start_time']?.toString();
+        if (rawStart != null) {
+          final localStart = DateTime.parse(rawStart).toLocal();
+          final slotStart = (localStart.hour ~/ 2) * 2;
+          slotCounts[slotStart] = (slotCounts[slotStart] ?? 0) + 1;
+        }
+
+        final vMap = r['vehicles'] as Map?;
+        final vId = (r['vehicle_id'] ?? vMap?['id'] ?? '').toString();
+        if (vId.isNotEmpty) {
+          final title = vMap != null ? _vehicleTitle(vMap) : 'Vehicle $vId';
+          final prev = vehicleCounts[vId];
+          vehicleCounts[vId] = (
+            title: title,
+            count: (prev?.count ?? 0) + 1,
+          );
+        }
+      }
+
+      // Top 3 busiest 2-hour windows
+      final sortedSlots = slotCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final topSlots = sortedSlots.take(3).toList();
+      final int maxSlotCount = topSlots.isEmpty ? 0 : topSlots.first.value;
+      final busiestHours = topSlots.map((entry) {
+        final ratio = maxSlotCount > 0
+            ? ((entry.value / maxSlotCount) * 0.85).clamp(0.12, 0.95)
+            : 0.0;
+        return BusyHourStat(
+          label: _formatHourWindow(entry.key),
+          count: entry.value,
+          ratio: ratio,
+        );
+      }).toList();
+
+      // Top 3 most-used vehicles
+      final sortedVehicles = vehicleCounts.values.toList()
+        ..sort((a, b) => b.count.compareTo(a.count));
+      final mostUsedVehicles = sortedVehicles
+          .take(3)
+          .map((v) => VehicleUsageStat(
+                vehicleTitle: v.title,
+                rentalCount: v.count,
+              ))
+          .toList();
+
+      return OwnerReportsData(
+        totalRevenue: totalRevenue,
+        rentalCount: validRentalCount,
+        dailyBarHeights: barHeights,
+        peakBarIndex: peakIndex,
+        busiestHours: busiestHours,
+        mostUsedVehicles: mostUsedVehicles,
+      );
+    } catch (e) {
+      if (AppConfig.uiPreviewMode) {
+        debugPrint('Preview mode: using sample reports data. $e');
+        return _sampleReportsData;
+      }
+      rethrow;
+    }
+  }
+
+  static String _formatHourWindow(int startHour) {
+    String fmt(int h) {
+      final normalized = h % 24;
+      if (normalized == 0) return '12 AM';
+      if (normalized < 12) return '$normalized AM';
+      if (normalized == 12) return '12 PM';
+      return '${normalized - 12} PM';
+    }
+
+    return '${fmt(startHour)} – ${fmt(startHour + 2)}';
+  }
+
+  static OwnerReportsData get _sampleReportsData => const OwnerReportsData(
+        totalRevenue: 1420,
+        rentalCount: 118,
+        dailyBarHeights: [
+          28,
+          42,
+          34,
+          58,
+          46,
+          34,
+          52,
+          68,
+          40,
+          46,
+          32,
+          56,
+          40,
+          52,
+        ],
+        peakBarIndex: 7,
+        busiestHours: [
+          BusyHourStat(label: '4 PM – 6 PM', count: 42, ratio: 0.82),
+          BusyHourStat(label: '10 AM – 12 PM', count: 31, ratio: 0.62),
+          BusyHourStat(label: '6 PM – 8 PM', count: 21, ratio: 0.42),
+        ],
+        mostUsedVehicles: [
+          VehicleUsageStat(vehicleTitle: 'Bicycle B03', rentalCount: 34),
+          VehicleUsageStat(vehicleTitle: 'Scooter S02', rentalCount: 29),
+        ],
       );
 
   // ---------- O3 Rentals ----------
@@ -355,8 +574,8 @@ class OwnerApi {
   static Future<CustomerProfile> fetchCustomer(OwnerRental r) async {
     if (r.isWalkIn) {
       final phone = r.walkInPhone ?? '';
-      final past = phone.isEmpty
-          ? <Map<String, dynamic>>[]
+      final List<dynamic> past = phone.isEmpty
+          ? []
           : await supabase
               .from('rentals')
               .select(_historySelect)
@@ -399,20 +618,22 @@ class OwnerApi {
   static const _historySelect = 'id, scheduled_start_time, scheduled_end_time, '
       'actual_end_time, grace_minutes_at_booking, vehicles(id, type)';
 
-  static Future<List<PastRental>> _history(
-      List<Map<String, dynamic>> rows) async {
+  static Future<List<PastRental>> _history(List<dynamic> rows) async {
     if (rows.isEmpty) return [];
+    final typedRows = [
+      for (final r in rows) Map<String, dynamic>.from(r as Map),
+    ];
     // Rentals where the vehicle came back with a problem.
     final checks = await supabase
         .from('vehicle_condition_checks')
         .select('rental_id, condition, notes')
-        .inFilter('rental_id', [for (final r in rows) r['id'] as String])
+        .inFilter('rental_id', [for (final r in typedRows) r['id'] as String])
         .eq('stage', 'return')
         .neq('condition', 'Good');
     final issues = {for (final c in checks) c['rental_id'] as String: c};
 
     return [
-      for (final r in rows) _pastRental(r, issues[r['id']]),
+      for (final r in typedRows) _pastRental(r, issues[r['id']]),
     ];
   }
 
