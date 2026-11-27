@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models/customer.dart';
 import '../models/rental.dart';
+import '../services/owner_api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
@@ -10,9 +11,43 @@ import '../widgets/rental_widgets.dart';
 /// O3c Customer details — opened from "View customer details ›" on O5 / O6.
 /// App customers: profile, contact, IC (security record) and rental history.
 /// Walk-ins: name, contact number, and the IC photo if one was taken on O4.
-class CustomerDetailsScreen extends StatelessWidget {
+///
+/// Real bookings load from Supabase (OwnerApi.fetchCustomer); viewing the IC
+/// is recorded in ic_access_log. Sample bookings use sampleCustomerFor.
+class CustomerDetailsScreen extends StatefulWidget {
   final OwnerRental rental; // the rental the owner came from
   const CustomerDetailsScreen({super.key, required this.rental});
+
+  @override
+  State<CustomerDetailsScreen> createState() => _CustomerDetailsScreenState();
+}
+
+class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
+  OwnerRental get rental => widget.rental;
+
+  CustomerProfile? _customer;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (rental.fromDatabase) {
+      _load();
+    } else {
+      _customer = sampleCustomerFor(rental);
+    }
+  }
+
+  Future<void> _load() async {
+    setState(() => _failed = false);
+    try {
+      final c = await OwnerApi.fetchCustomer(rental);
+      if (mounted) setState(() => _customer = c);
+    } catch (e) {
+      debugPrint('Customer details: could not load. $e');
+      if (mounted) setState(() => _failed = true);
+    }
+  }
 
   /// Until url_launcher is added (group OK needed), copy the number so the
   /// owner can paste it into the phone app.
@@ -27,8 +62,28 @@ class CustomerDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Sample data for now. Later: Api.fetchCustomer(...).
-    final c = sampleCustomerFor(rental);
+    final c = _customer;
+    if (c == null) {
+      return Scaffold(
+        appBar: const AppHeader(title: 'Customer details'),
+        body: Center(
+          child: _failed
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text("Couldn't load the customer",
+                        style: inter(15, weight: FontWeight.w600)),
+                    const SizedBox(height: 4),
+                    Text('Check your internet connection.',
+                        style: inter(13, color: AppColors.text2)),
+                    const SizedBox(height: 12),
+                    SmallButton(label: 'Try again', onPressed: _load),
+                  ],
+                )
+              : const CircularProgressIndicator(color: AppColors.dark),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: const AppHeader(title: 'Customer details'),
@@ -44,7 +99,8 @@ class CustomerDetailsScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _icCard(context, c),
           ],
-          if (!c.isWalkIn) ...[
+          // Walk-ins: earlier visits found by their phone number.
+          if (!c.isWalkIn || c.history.isNotEmpty) ...[
             const SizedBox(height: 18),
             const SectionTitle('Rentals'),
             const SizedBox(height: 4),
@@ -102,7 +158,11 @@ class CustomerDetailsScreen extends StatelessWidget {
                 Text(
                   c.isWalkIn
                       ? 'Walk-in customer'
-                      : 'Customer since ${formatDate(c.since!)} · ${c.rentalCount} rentals',
+                      : [
+                          if (c.since != null)
+                            'Customer since ${formatDate(c.since!)}',
+                          '${c.rentalCount} past rental${c.rentalCount == 1 ? '' : 's'}',
+                        ].join(' · '),
                   style: inter(12, color: AppColors.hint),
                 ),
               ],
@@ -169,8 +229,13 @@ class CustomerDetailsScreen extends StatelessWidget {
               SmallButton(
                 label: 'View IC',
                 primary: false,
+                // Real bookings: the view is recorded, then the photos load.
                 onPressed: () => showIcViewer(context, c.displayName,
-                    front: rental.walkInIcFront, back: rental.walkInIcBack),
+                    front: rental.walkInIcFront,
+                    back: rental.walkInIcBack,
+                    load: rental.fromDatabase
+                        ? () => OwnerApi.openIc(rental)
+                        : null),
               ),
             ],
           ),

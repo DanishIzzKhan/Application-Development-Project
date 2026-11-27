@@ -2,9 +2,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config.dart';
 import '../models/rental.dart';
 import '../models/vehicle.dart';
+import '../services/owner_api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/rental_widgets.dart';
@@ -13,8 +16,9 @@ import '../widgets/rental_widgets.dart';
 /// For customers without a phone or the app: the owner books for them,
 /// payment is taken at the counter, and the rental is not tracked on the map.
 ///
-/// Pops with the new [OwnerRental]; O3 adds it to "Ready for handover"
-/// and opens O5 for it.
+/// Saved in Supabase (OwnerApi.createWalkIn): the booking, the optional IC
+/// photos and the counter payment. Pops with the new [OwnerRental] (already
+/// paid, status 'ready'); O3 opens Start rental (O5) for it.
 class WalkInBookingScreen extends StatefulWidget {
   const WalkInBookingScreen({super.key});
 
@@ -31,9 +35,13 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
   final _phone = TextEditingController();
   final _picker = ImagePicker();
 
-  // Sample data for now. Later: Api.fetchAvailableVehicles().
-  final List<Vehicle> _vehicles = sampleAvailableVehicles();
-  late Vehicle _vehicle = _vehicles.first;
+  // Vehicles free right now (sample fleet only in AppConfig.uiPreviewMode).
+  List<Vehicle> _vehicles =
+      AppConfig.uiPreviewMode ? sampleAvailableVehicles() : [];
+  Vehicle? _vehicle =
+      AppConfig.uiPreviewMode ? sampleAvailableVehicles().first : null;
+  bool _loadingVehicles = !AppConfig.uiPreviewMode;
+  bool _busy = false; // saving the booking
 
   int _minutes = 60; // wireframe default: 1 hr 0 min
   int _payment = 0; // Cash by default
@@ -42,13 +50,14 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
   Uint8List? _icBack;
 
   int get _blocks => _minutes ~/ OwnerRental.blockMinutes;
-  double get _total => _blocks * _vehicle.pricePer20Min;
+  double get _total => _blocks * (_vehicle?.pricePer20Min ?? 0);
 
   bool get _phoneOk =>
       _phone.text.replaceAll(RegExp(r'[^0-9]'), '').length >= 9;
 
   /// What is still missing before the booking can be created.
   List<String> get _missing => [
+        if (_vehicle == null) 'No vehicle is available right now',
         if (_name.text.trim().isEmpty) 'Enter the customer name',
         if (!_phoneOk) 'Enter a valid contact number',
       ];
@@ -61,6 +70,29 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
     // Redraw while typing, so the button turns dark once everything is filled.
     for (final c in [_name, _phone]) {
       c.addListener(() => setState(() {}));
+    }
+    if (!AppConfig.uiPreviewMode) _loadVehicles();
+  }
+
+  Future<void> _loadVehicles() async {
+    setState(() => _loadingVehicles = true);
+    try {
+      final list = await OwnerApi.fetchAvailableVehicles();
+      if (!mounted) return;
+      setState(() {
+        _vehicles = list;
+        _vehicle = list.isEmpty ? null : list.first;
+      });
+    } catch (e) {
+      debugPrint('Walk-in: could not load vehicles. $e');
+      if (mounted) {
+        showTopNotice(context,
+            title: "Couldn't load vehicles",
+            lines: ['Check your internet connection and try again.'],
+            type: NoticeType.error);
+      }
+    } finally {
+      if (mounted) setState(() => _loadingVehicles = false);
     }
   }
 
@@ -95,24 +127,60 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
         type: NoticeType.error);
   }
 
-  void _create() {
-    // Later: Api.createWalkInBooking(...) inserts a rental with
-    // is_walk_in = true, is_tracked = false, and a 'Cash'/'TnG'/'Bank QR'
-    // payment; the IC photo goes to the private ic-documents bucket.
-    final rental = OwnerRental.newWalkIn(
-      name: _name.text.trim(),
-      phone: _phone.text.trim(),
-      vehicle: _vehicle,
-      minutes: _minutes,
-      paymentMethod: _payValues[_payment],
-      icFront: _icFront,
-      icBack: _icBack,
-    );
+  Future<void> _create() async {
+    final vehicle = _vehicle!;
+    final OwnerRental rental;
+    if (AppConfig.uiPreviewMode) {
+      rental = OwnerRental.newWalkIn(
+        name: _name.text.trim(),
+        phone: _phone.text.trim(),
+        vehicle: vehicle,
+        minutes: _minutes,
+        paymentMethod: _payValues[_payment],
+        icFront: _icFront,
+        icBack: _icBack,
+      );
+    } else {
+      setState(() => _busy = true);
+      try {
+        rental = await OwnerApi.createWalkIn(
+          name: _name.text.trim(),
+          phone: _phone.text.trim(),
+          vehicle: vehicle,
+          minutes: _minutes,
+          method: _payValues[_payment],
+          icFront: _icFront,
+          icBack: _icBack,
+        );
+      } on PostgrestException catch (e) {
+        // e.g. "This vehicle is already booked for that time."
+        _failed([e.message]);
+        return;
+      } catch (e) {
+        debugPrint('Walk-in failed: $e');
+        _failed([
+          'Check your internet connection and try again.',
+          'If it was created, it is on Rentals under Waiting for payment.',
+        ]);
+        return;
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+    }
+    if (!mounted) return;
     showTopNotice(context,
         title: 'Booking ${rental.bookingCode} created',
         lines: ['${formatRM(_total)} paid by ${_payLabels[_payment]}'],
         type: NoticeType.success);
     Navigator.of(context).pop(rental);
+  }
+
+  void _failed(List<String> lines) {
+    if (!mounted) return;
+    showTopNotice(context,
+        title: "Couldn't create the booking",
+        lines: lines,
+        type: NoticeType.error);
   }
 
   @override
@@ -140,27 +208,49 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
           // ---- Vehicle dropdown ----
           Text('Vehicle', style: inter(14, weight: FontWeight.w600)),
           const SizedBox(height: 6),
-          DropdownButtonFormField<Vehicle>(
-            initialValue: _vehicle,
-            style: inter(15),
-            icon: const Icon(Icons.expand_more, color: AppColors.ink),
-            decoration: InputDecoration(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-              enabledBorder: _border(AppColors.border),
-              focusedBorder: _border(AppColors.ink),
+          if (_loadingVehicles)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 14),
+              child: LinearProgressIndicator(color: AppColors.dark),
+            )
+          else if (_vehicles.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('No vehicle is available right now.',
+                        style: inter(14, color: AppColors.text2)),
+                  ),
+                  SmallButton(
+                      label: 'Refresh',
+                      primary: false,
+                      onPressed: _loadVehicles),
+                ],
+              ),
+            )
+          else
+            DropdownButtonFormField<Vehicle>(
+              initialValue: _vehicle,
+              style: inter(15),
+              icon: const Icon(Icons.expand_more, color: AppColors.ink),
+              decoration: InputDecoration(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                enabledBorder: _border(AppColors.border),
+                focusedBorder: _border(AppColors.ink),
+              ),
+              items: [
+                for (final v in _vehicles)
+                  DropdownMenuItem(
+                    value: v,
+                    child: Text('${v.name} · ${v.priceLabel} / 20 min'),
+                  ),
+              ],
+              onChanged: (v) {
+                if (v != null) setState(() => _vehicle = v);
+              },
             ),
-            items: [
-              for (final v in _vehicles)
-                DropdownMenuItem(
-                  value: v,
-                  child: Text('${v.name} · ${v.priceLabel} / 20 min'),
-                ),
-            ],
-            onChanged: (v) {
-              if (v != null) setState(() => _vehicle = v);
-            },
-          ),
           const SizedBox(height: 14),
 
           // ---- Duration ----
@@ -214,9 +304,10 @@ class _WalkInBookingScreenState extends State<WalkInBookingScreen> {
           // Grey until name and contact number are filled (IC photos optional).
           // A tap on the grey button shows what is missing.
           GestureDetector(
-            onTap: _canCreate ? null : _showMissing,
+            onTap: _canCreate || _busy ? null : _showMissing,
             child: PrimaryButton(
               label: 'Create booking · ${formatRM(_total)} paid',
+              loading: _busy,
               onPressed: _canCreate ? _create : null,
             ),
           ),

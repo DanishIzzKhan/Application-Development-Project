@@ -13,7 +13,7 @@ import 'o6_end_rental.dart';
 /// O3 Rentals — the "Rentals" tab inside OwnerShell (bottom bar comes from the shell).
 ///
 /// Shows real bookings from Supabase (OwnerApi.fetchOpenRentals). Pull down
-/// to refresh. Walk-ins made on O4 are kept in the app until O4 saves them.
+/// to refresh. Walk-ins made on O4 are saved there and show up here too.
 class RentalsScreen extends StatefulWidget {
   const RentalsScreen({super.key});
 
@@ -93,7 +93,12 @@ class _RentalsScreenState extends State<RentalsScreen> {
       MaterialPageRoute(builder: (_) => const WalkInBookingScreen()),
     );
     if (rental == null || !mounted) return;
-    setState(() => _appOnly = [..._appOnly, rental]);
+    if (rental.fromDatabase) {
+      await _load(); // the new walk-in is now under Ready for handover
+    } else {
+      setState(() => _appOnly = [..._appOnly, rental]);
+    }
+    if (!mounted) return;
     await _openStart(rental);
   }
 
